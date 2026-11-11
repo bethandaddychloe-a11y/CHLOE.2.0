@@ -156,6 +156,28 @@ textarea.inp{resize:vertical;min-height:84px}
 .react-row .k{color:var(--muted);font-size:12px;padding-top:2px}
 .react-row p{color:var(--fg);opacity:.9}
 
+/* calendar */
+.cal-day{margin:14px 0 6px}
+.cal-ev{display:grid;grid-template-columns:56px 1fr auto;gap:10px;align-items:center;width:100%;text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px;cursor:pointer}
+.cal-ev[aria-pressed="true"]{border-color:var(--accent)}
+.cal-t{font-size:13px}
+.cal-m b{font-weight:500;display:block;overflow-wrap:anywhere}
+.cal-m small{color:var(--muted);font-size:12px}
+.cal-go{font-size:12px;color:var(--accent);font-weight:500}
+.imp{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.imp.hi{background:var(--sell)} .imp.md{background:var(--warn)}
+.calls{display:grid;gap:10px;margin-top:10px}
+.call-row{display:grid;grid-template-columns:78px auto 1fr;gap:10px;align-items:center;font-size:14px}
+.call-row .lean{color:var(--muted);font-size:12px}
+/* auto trade */
+.badge{display:inline-block;border-radius:6px;padding:1px 8px;font-size:12px;font-family:var(--font-mono);font-weight:500;border:1px solid currentColor}
+.badge.demo{color:var(--buy)} .badge.real{color:var(--sell)} .badge.unk{color:var(--warn)}
+.pos{display:grid;gap:6px;border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--bg);margin-top:8px}
+.pos-top{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pos-top .pl{margin-left:auto;font-family:var(--font-mono);font-weight:500}
+.steps{margin:8px 0 0;padding-left:20px;font-size:14px;display:grid;gap:6px}
+.steps code{font-family:var(--font-mono);font-size:12.5px;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:0 5px}
+.btn.danger{border-color:var(--sell);color:var(--sell)}
 /* log */
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .stat{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
@@ -171,7 +193,7 @@ textarea.inp{resize:vertical;min-height:84px}
 
 /* tabs */
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--surface);border-top:1px solid var(--line);padding-top:6px;padding-bottom:calc(6px + env(safe-area-inset-bottom,0px))}
-.tabs .col{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.tabs .col{display:grid;grid-template-columns:repeat(5,1fr);gap:2px}
 .tab{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px;color:var(--muted);font-size:11.5px;cursor:pointer;border-radius:8px}
 .tab svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .tab[aria-current="page"]{color:var(--accent)}
@@ -209,8 +231,15 @@ textarea.inp{resize:vertical;min-height:84px}
 
     <!-- EVENTS -->
     <section class="view" id="v-events" aria-label="News events">
+      <div class="card" id="calCard">
+        <div class="sec-head"><p class="eyebrow">Upcoming news</p><button class="btn small" id="calReload" type="button">Refresh</button></div>
+        <p class="note" style="margin:4px 0 0">High and medium impact news for USD, GBP and JPY. Tap one and Chloe 2 gives BUY, SELL or WAIT for each pair. Times are in your phone's time zone.</p>
+        <div id="calList"></div>
+        <p class="status" id="calStatus" role="status"></p>
+      </div>
+      <div id="evOut"></div>
       <div class="card">
-        <p class="eyebrow">Event lab</p>
+        <p class="eyebrow">Manual event</p>
         <h2 class="h-sec" style="margin:2px 0 10px">What does each pair do if the number misses or beats?</h2>
         <div class="fields">
           <div class="field"><label for="evName">Event</label>
@@ -224,8 +253,7 @@ textarea.inp{resize:vertical;min-height:84px}
         <div class="actions"><button class="btn primary" id="evBtn" type="button">Estimate odds</button></div>
         <p class="status" id="evStatus" role="status"></p>
       </div>
-      <div id="evOut"></div>
-      <p class="foot">Odds are Claude's estimate from what you type here. There is no live calendar or consensus feed connected yet, so check the forecast figure before you trade it.</p>
+      <p class="foot">The odds are an AI estimate, not a data feed. Prices spike both ways in the first minutes after a release, so treat the call as the lean for the move after the spike, and never risk more than you can lose. The calendar comes from a free weekly feed, so check the forecast before you trade it.</p>
     </section>
 
     <!-- ASSISTANT -->
@@ -244,6 +272,11 @@ textarea.inp{resize:vertical;min-height:84px}
       </div>
     </section>
 
+    <!-- AUTO -->
+    <section class="view" id="v-auto" aria-label="Auto trading">
+      <div id="autoBody"></div>
+    </section>
+
     <!-- LOG -->
     <section class="view" id="v-log" aria-label="Trade log">
       <dl class="stats" id="stats"></dl>
@@ -257,6 +290,7 @@ textarea.inp{resize:vertical;min-height:84px}
     <button class="tab" data-v="signal" type="button"><svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 3 8-9"/></svg>Signal</button>
     <button class="tab" data-v="events" type="button"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>Events</button>
     <button class="tab" data-v="assistant" type="button"><svg viewBox="0 0 24 24"><path d="M5 6h14v10H10l-4 3v-3H5z"/></svg>Assistant</button>
+    <button class="tab" data-v="auto" type="button"><svg viewBox="0 0 24 24"><path d="M13 3L5 13h6l-1 8 8-10h-6z"/></svg>Auto</button>
     <button class="tab" data-v="log" type="button"><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h9"/></svg>Log</button>
   </div></nav>
 </div>
@@ -488,9 +522,10 @@ async function run() {
     const got = await Promise.all(jobs.map(j => getSeries(j[1], j[2], j[3])));
     jobs.forEach((j, i) => { if (j[0].startsWith("p:")) R.proxies[j[0].slice(2)] = got[i]; else R[j[0]] = got[i]; });
     setStatus("Reading macro, positioning and news feeds…");
-    const f = await loadFeeds(key); R.feeds = f; raw[key] = R; results[key] = analyze(key);
+    const f = await loadFeeds(key); R.feeds = f; raw[key] = R; results[key] = analyze(key); if (results[key]) results[key].ranAt = Date.now();
     setStatus(`Updated. Last candle ${R.m15.at(-1).t} (data time). ` + feedsNote(f), false);
     if (pair === key) renderSignal();
+    maybeAuto(key);
   } catch (e) {
     if (e.locked) { showUnlock(); setStatus("Enter your access code first.", true); }
     else setStatus(e.message || "Could not load data.", true);
@@ -702,32 +737,190 @@ function initAssistant() {
   }
 }
 /* ---------- event lab ---------- */
-async function estimate() {
-  const fc = $("#evFc").value.trim(); if (!fc) { $("#evStatus").textContent = "Enter the forecast figure first."; return; }
-  const btn = $("#evBtn"); btn.disabled = true; $("#evStatus").textContent = "Thinking…"; $("#evOut").innerHTML = "";
-  const list = Object.keys(PAIRS).map(k => `${k} (${PAIRS[k].sub})`).join(", ");
-  const prompt = `You are a macro analyst. Event: ${$("#evName").value}. Forecast: ${fc}. Previous: ${$("#evPrev").value.trim() || "not given"}. Recent releases: ${$("#evTrend").value.trim() || "not given"}. World context from the user: ${$("#evCtx").value.trim() || "none given"}. Latest US macro readings from live data: ${macSummary()}.
+const sgnOf = d => { d = String(d || "").toUpperCase(); return d === "BUY" ? 1 : d === "SELL" ? -1 : 0; };
+async function estimateEv(ev) {
+  const out = $("#evOut"), list = Object.keys(PAIRS).map(k => `${k} (${PAIRS[k].sub})`).join(", ");
+  out.innerHTML = `<div class="card"><p class="status" role="status">Analysing ${esc(ev.name)}…</p></div>`; out.scrollIntoView({ block: "start", behavior: "smooth" });
+  const prompt = `You are a macro analyst. Event: ${ev.name}. Forecast: ${ev.fc || "not published (judge from the type of event)"}. Previous: ${ev.prev || "not given"}. Recent releases: ${ev.trend || "not given"}. Context: ${ev.ctx || "none given"}. Latest US macro readings from live data: ${macSummary()}.
 Estimate the chance the actual figure comes in below, in line with, or above the forecast (integers summing to 100), using the previous figure, the recent pattern and the context. Then say how each of these pairs usually reacts in each case: ${list}. Be honest that this is an estimate. Keep every "why" under 16 words.
 Reply with only JSON: {"odds":{"below":0,"match":0,"above":0},"summary":"one or two sentences","reactions":{"XAUUSD":{"below":{"dir":"BUY|SELL|CHOP","why":""},"match":{"dir":"","why":""},"above":{"dir":"","why":""}}}} with an entry for each pair key: ${Object.keys(PAIRS).join(", ")}.`;
   try {
     const r = parseLoose(await ask([{ role: "user", content: prompt }], { json: true, maxTokens: 2500 }));
     if (!r) throw new Error("The answer came back in the wrong shape. Try again.");
-    const o = r.odds || {}, below = +o.below || 0, match = +o.match || 0, above = +o.above || 0;
-    const row = (k, lab, v) => { const d = String(v && v.dir || "CHOP").toUpperCase(); return `<div class="react-row"><span class="k">${lab}</span><span class="chip ${d.toLowerCase()}">${esc(d)}</span><p>${esc(v && v.why || "")}</p></div>`; };
-    $("#evOut").innerHTML = `<div class="card"><p class="eyebrow">${esc($("#evName").value)} · forecast ${esc(fc)}</p>
+    const o = r.odds || {}, below = +o.below || 0, match = +o.match || 0, above = +o.above || 0, tot = below + match + above || 100;
+    const row = (lab, v) => { const d = String(v && v.dir || "CHOP").toUpperCase(); return `<div class="react-row"><span class="k">${lab}</span><span class="chip ${d.toLowerCase()}">${esc(d)}</span><p>${esc(v && v.why || "")}</p></div>`; };
+    const calls = Object.keys(PAIRS).map(k => {
+      const x = (r.reactions || {})[k] || {}, net = (below * sgnOf(x.below && x.below.dir) + match * sgnOf(x.match && x.match.dir) + above * sgnOf(x.above && x.above.dir)) / tot;
+      const call = net >= 0.2 ? "BUY" : net <= -0.2 ? "SELL" : "WAIT";
+      return `<div class="call-row"><span class="mono">${k}</span><span class="chip ${call.toLowerCase()}">${call}</span><span class="lean">${call === "WAIT" ? "no clear lean" : Math.round(Math.abs(net) * 100) + "% lean"}</span></div>`;
+    }).join("");
+    out.innerHTML = `<div class="card"><p class="eyebrow">${esc(ev.name)}${ev.fc ? " · forecast " + esc(ev.fc) : ""}</p>
       <div class="odds" style="margin:10px 0" role="img" aria-label="Below ${below}%, in line ${match}%, above ${above}%"><div class="o-b" style="flex:${below || 1}">Below ${below}%</div><div class="o-m" style="flex:${match || 1}">In line ${match}%</div><div class="o-a" style="flex:${above || 1}">Above ${above}%</div></div>
-      <p class="note">${esc(r.summary || "")}</p></div>` +
-      Object.keys(PAIRS).map(k => { const x = (r.reactions || {})[k] || {}; return `<div class="card"><h3 class="h-sec" style="font-size:15px">${k} <span class="note">${esc(PAIRS[k].sub)}</span></h3><div class="react">${row(k, "Below", x.below)}${row(k, "In line", x.match)}${row(k, "Above", x.above)}</div></div>`; }).join("");
-    $("#evStatus").textContent = "";
-  } catch (e) { $("#evStatus").textContent = askErr(e); if (e && e.locked) showUnlock(); }
-  btn.disabled = false;
+      <p class="note">${esc(r.summary || "")}</p></div>
+      <div class="card"><div class="sec-head"><h2 class="h-sec">Chloe 2's call</h2><span class="note">after the release</span></div><div class="calls">${calls}</div>
+      <p class="note" style="margin-top:10px">The call weighs each outcome by its odds. A small lean means the news could go either way, so waiting is fine.</p></div>` +
+      Object.keys(PAIRS).map(k => { const x = (r.reactions || {})[k] || {}; return `<div class="card"><h3 class="h-sec" style="font-size:15px">${k} <span class="note">${esc(PAIRS[k].sub)}</span></h3><div class="react">${row("Below", x.below)}${row("In line", x.match)}${row("Above", x.above)}</div></div>`; }).join("");
+  } catch (e) { out.innerHTML = `<div class="card"><p class="status err">${esc(askErr(e))}</p></div>`; if (e && e.locked) showUnlock(); }
+}
+function estimate() {
+  const fc = $("#evFc").value.trim(); if (!fc) { $("#evStatus").textContent = "Enter the forecast figure first."; return; }
+  $("#evStatus").textContent = "";
+  estimateEv({ name: $("#evName").value, fc, prev: $("#evPrev").value.trim(), trend: $("#evTrend").value.trim(), ctx: $("#evCtx").value.trim() });
+}
+
+/* ---------- news calendar ---------- */
+let calData = null, calShown = [], calSel = "";
+const hm = t => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const rel = ms => { const m = Math.round(ms / 60000), a = Math.abs(m), t = a < 60 ? a + "m" : a < 2880 ? Math.floor(a / 60) + "h " + (a % 60) + "m" : Math.round(a / 1440) + "d"; return m < 0 ? t + " ago" : "in " + t; };
+async function loadCal() {
+  const st = $("#calStatus"); st.className = "status"; st.textContent = "Loading the calendar…";
+  try {
+    calData = await api("/api/calendar"); renderCal();
+    st.textContent = calData.stale ? "The feed is not answering, so this is the last saved calendar." : "";
+  } catch (e) { st.className = "status err"; st.textContent = e.locked ? "Enter your access code first." : (e.message || "Could not load the calendar."); if (e.locked) showUnlock(); }
+}
+function renderCal() {
+  if (!calData) return;
+  const now = Date.now(); calShown = (calData.events || []).filter(x => x.t > now - 3 * 3600000).slice(0, 30);
+  if (!calShown.length) { $("#calList").innerHTML = `<p class="note" style="margin-top:10px">No high or medium impact USD, GBP or JPY news in the feed right now.</p>`; return; }
+  let day = "", h = "";
+  calShown.forEach((x, i) => {
+    const d = new Date(x.t).toLocaleDateString([], { weekday: "long", day: "numeric", month: "short" });
+    if (d !== day) { day = d; h += `<p class="eyebrow cal-day">${esc(d)}</p>`; }
+    const sub = [x.cur, x.impact, rel(x.t - now), x.forecast ? "forecast " + x.forecast : "", x.previous ? "prev " + x.previous : ""].filter(Boolean).join(" · ");
+    h += `<button class="cal-ev" type="button" data-i="${i}" aria-pressed="${calSel === x.t + x.title}"><span class="cal-t mono">${hm(x.t)}</span><span class="cal-m"><b><i class="imp ${x.impact === "High" ? "hi" : "md"}"></i>${esc(x.title)}</b><small>${esc(sub)}</small></span><span class="cal-go">Analyse</span></button>`;
+  });
+  $("#calList").innerHTML = h;
+}
+$("#calList").onclick = e => {
+  const b = e.target.closest(".cal-ev"); if (!b) return; const x = calShown[+b.dataset.i]; if (!x) return;
+  calSel = x.t + x.title; renderCal();
+  estimateEv({ name: `${x.cur} ${x.title}`, fc: x.forecast, prev: x.previous, trend: "", ctx: `${x.cur} event, ${x.impact} impact, due ${new Date(x.t).toUTCString()}.` });
+};
+$("#calReload").onclick = () => { calData = null; loadCal(); };
+
+/* ---------- auto trading (MetaApi) ---------- */
+let tradeInfo = null, tpSel = "tp1", autoCfg = Object.assign({ on: false, minConv: 40, maxRisk: 3 }, store.get("c2.auto", {})), autoLog = [];
+function twoTap(btn, fn) {
+  const orig = btn.textContent; let t = null;
+  btn.onclick = () => { if (t) { clearTimeout(t); t = null; btn.textContent = orig; fn(); } else { btn.textContent = "Tap again to confirm"; t = setTimeout(() => { t = null; btn.textContent = orig; }, 4000); } };
+}
+async function loadTrade() {
+  const body = $("#autoBody"); if (!tradeInfo) body.innerHTML = `<div class="card"><p class="status">Connecting to your account…</p></div>`;
+  try { tradeInfo = await api("/api/trade/status"); }
+  catch (e) { if (e.locked) { showUnlock(); body.innerHTML = `<div class="card"><p class="status err">Enter your access code first.</p></div>`; return; } tradeInfo = { error: e.message || "Could not reach the account" }; }
+  renderAuto();
+}
+function ticket(A) {
+  const cfg = PAIRS[A.key], P = A.plan; if (!P || !cfg.vpp || !tradeInfo || !tradeInfo.configured) return null;
+  const m = planMath(A), maxLot = (tradeInfo.limits && tradeInfo.limits.maxLot) || 0.05;
+  let vol = m.lot === null ? 0.01 : Math.max(0.01, Math.floor(m.lot * 100) / 100); vol = Math.min(vol, maxLot);
+  return { vol, maxLot, tp: P[tpSel] };
+}
+function riskAt(A, vol) { const eq = (tradeInfo.account && +tradeInfo.account.equity) || acct.eq, usd = vol * A.plan.dist * PAIRS[A.key].vpp(A.plan.entry); return { usd, pct: usd / eq * 100 }; }
+function renderAuto() {
+  const body = $("#autoBody"), T = tradeInfo; if (!T) return;
+  if (T.configured === false) {
+    body.innerHTML = `<div class="card"><p class="eyebrow">Connect your account</p><h2 class="h-sec" style="margin:2px 0 6px">Not connected yet</h2>
+      <p class="note">Chloe 2 trades through MetaApi, a service that links to your Exness MT5 account from the cloud. Use a <b>demo account first</b>.</p>
+      <ol class="steps"><li>Sign up at <b>metaapi.cloud</b> and add an account: platform MT5, your Exness server name, login and trading password.</li>
+      <li>Wait until the account shows <b>Deployed</b> and <b>Connected</b>.</li>
+      <li>Copy the <b>account id</b> from that account, and your <b>API access token</b> from the token page.</li>
+      <li>In Render, open Chloe2, then Environment, and add <code>METAAPI_TOKEN</code> and <code>METAAPI_ACCOUNT_ID</code>. Save and wait for Live.</li>
+      <li>Come back here and tap Reconnect.</li></ol>
+      <div class="actions"><button class="btn primary" id="reBtn" type="button">Reconnect</button></div></div>`;
+    $("#reBtn").onclick = () => { tradeInfo = null; loadTrade(); }; return;
+  }
+  if (T.error) {
+    body.innerHTML = `<div class="card"><p class="eyebrow">Connection problem</p><p class="status err" style="margin-top:6px">${esc(T.error)}</p>
+      <p class="note">Check that your MetaApi account shows Deployed and Connected, and that the token and account id in Render are right. If your region is not New York, add <code>METAAPI_REGION</code> in Render.</p>
+      <div class="actions"><button class="btn primary" id="reBtn" type="button">Retry</button></div></div>`;
+    $("#reBtn").onclick = () => { tradeInfo = null; loadTrade(); }; return;
+  }
+  const a = T.account || {}, mode = a.mode || "UNKNOWN", mc = mode === "DEMO" ? "demo" : mode === "REAL" ? "real" : "unk";
+  const money = v => v === undefined || v === null ? "n/a" : (+v).toFixed(2) + (a.currency ? " " + a.currency : "");
+  let h = `<div class="card"><div class="sec-head"><p class="eyebrow">Account</p><span class="badge ${mc}">${mode === "UNKNOWN" ? "MODE UNKNOWN" : mode}</span></div>
+    <dl class="plan-out"><div><dt>Balance</dt><dd>${money(a.balance)}</dd></div><div><dt>Equity</dt><dd>${money(a.equity)}</dd></div>
+    <div><dt>Server</dt><dd style="font-size:13px">${esc(a.server || "n/a")}</dd></div><div><dt>Login</dt><dd>${esc(a.login || "n/a")}</dd></div></dl>
+    ${mode === "REAL" ? `<p class="note" style="margin-top:8px;color:var(--warn)">This is a real-money account. Every trade here uses real money.</p>` : ""}</div>`;
+  const A = results[pair], cfg = PAIRS[pair];
+  h += `<div class="card"><div class="sec-head"><h2 class="h-sec">Trade ticket</h2><span class="note">${pair}</span></div>`;
+  if (!A) h += `<p class="note" style="margin-top:6px">Run an analysis on the Signal tab first. The ticket fills from it.</p>`;
+  else if (!A.plan) h += `<p class="note" style="margin-top:6px">${pair} says WAIT, so there is no trade to send.</p>`;
+  else if (!cfg.vpp) h += `<p class="note" style="margin-top:6px">${pair} is read through a proxy fund, so it has no lot sizing. Auto trading is off for it.</p>`;
+  else {
+    const t = ticket(A), age = Date.now() - (A.ranAt || 0), stale = age > 20 * 60000, r0 = riskAt(A, t.vol), d = cfg.dec;
+    h += `<p class="note" style="margin-top:4px">Analysis is ${Math.round(age / 60000)} min old.</p>
+      <div class="fields" style="margin-top:10px"><div class="field"><label for="tkLot">Lot size</label><input class="inp mono" id="tkLot" inputmode="decimal" value="${t.vol.toFixed(2)}"></div>
+      <div class="field"><label>Target</label><div class="seg" id="tkTp"><button type="button" data-t="tp1" aria-pressed="${tpSel === "tp1"}">T1 · 1.5R</button><button type="button" data-t="tp2" aria-pressed="${tpSel === "tp2"}">T2 · 3R</button></div></div></div>
+      <dl class="plan-out"><div><dt>Side</dt><dd class="${A.verdict.toLowerCase()}">${A.verdict}</dd></div><div><dt>Stop</dt><dd class="sell">${A.plan.sl.toFixed(d)}</dd></div>
+      <div><dt>Target</dt><dd class="buy" id="tkTpv">${t.tp.toFixed(d)}</dd></div><div><dt>Money at risk</dt><dd id="tkRisk">$${r0.usd.toFixed(2)} · ${r0.pct.toFixed(1)}%</dd></div></dl>
+      <p class="note" id="tkWarn" style="margin-top:8px;color:var(--warn)"></p>
+      <p class="note" style="margin-top:6px">Sent as a market order with the stop and target attached. The server caps lots at ${t.maxLot}.</p>
+      <div class="actions"><button class="btn primary" id="tkSend" type="button">Send ${A.verdict} order</button></div><p class="status" id="tkMsg" role="status"></p>`;
+    h += `</div>`; body.innerHTML = h + autoCards(T);
+    const upd = () => {
+      const v = Math.round(parseFloat($("#tkLot").value) * 100) / 100, ok = v >= 0.01 && v <= t.maxLot, rr = ok ? riskAt(A, v) : null;
+      $("#tkRisk").textContent = rr ? `$${rr.usd.toFixed(2)} · ${rr.pct.toFixed(1)}%` : "n/a";
+      const w = !ok ? `Lot must be between 0.01 and ${t.maxLot}.` : stale ? "The analysis is older than 20 minutes. Run it again first." : rr.pct > autoCfg.maxRisk ? `This risks ${rr.pct.toFixed(1)}% of your equity, above the ${autoCfg.maxRisk}% limit. Use a smaller lot or skip it.` : A.level === "HIGH" ? "Risk is HIGH on this signal. Skipping is the safer choice." : "";
+      $("#tkWarn").textContent = w; const blocked = !ok || stale || rr.pct > autoCfg.maxRisk; $("#tkSend").disabled = blocked; return { v, blocked };
+    };
+    $("#tkLot").oninput = upd; upd();
+    $("#tkTp").onclick = e => { const b = e.target.closest("button"); if (!b) return; tpSel = b.dataset.t; renderAuto(); };
+    twoTap($("#tkSend"), async () => {
+      const { v, blocked } = upd(); if (blocked) return; const m = $("#tkMsg"); m.className = "status"; m.textContent = "Sending…"; $("#tkSend").disabled = true;
+      try { const r = await api("/api/trade/order", { method: "POST", body: JSON.stringify({ pair, side: A.verdict, volume: v, sl: A.plan.sl, tp: A.plan[tpSel] }) });
+        m.textContent = `Sent: ${r.side} ${r.volume} ${r.symbol}.`; try { await addLog(A); } catch {} setTimeout(loadTrade, 1200);
+      } catch (e) { m.className = "status err"; m.textContent = e.message || "The order was not sent."; $("#tkSend").disabled = false; }
+    });
+    wirePos(); return;
+  }
+  h += `</div>`; body.innerHTML = h + autoCards(T); wirePos();
+}
+function autoCards(T) {
+  const pos = T.positions || [];
+  let h = `<div class="card"><div class="sec-head"><h2 class="h-sec">Open trades</h2><button class="btn small" id="posReload" type="button">Refresh</button></div>`;
+  if (!pos.length) h += `<p class="note" style="margin-top:6px">No open trades.</p>`;
+  pos.forEach(p => { const pl = +p.profit || 0; h += `<div class="pos"><div class="pos-top"><b class="mono">${esc(p.symbol)}</b><span class="chip ${p.type === "BUY" ? "buy" : "sell"}">${esc(p.type)}</span><span class="mono note">${esc(p.volume)} lot</span><span class="pl ${pl >= 0 ? "buy" : "sell"}">${pl >= 0 ? "+" : ""}${pl.toFixed(2)}</span></div>
+    <p class="note mono">open ${esc(p.open)} · stop ${esc(p.sl || "none")} · target ${esc(p.tp || "none")}</p><div class="actions" style="margin:2px 0 0"><button class="btn small posClose" data-id="${esc(p.id)}" type="button">Close trade</button></div></div>`; });
+  if (pos.length) h += `<div class="actions"><button class="btn danger" id="closeAll" type="button">Close all trades</button></div>`;
+  h += `<p class="status" id="posMsg" role="status"></p></div>`;
+  h += `<div class="card"><p class="eyebrow">Auto-send</p>
+    <label class="check" style="margin-top:6px"><input type="checkbox" id="autoOn" ${autoCfg.on ? "checked" : ""}> Send trades automatically after each analysis</label>
+    <div class="fields" style="margin-top:10px"><div class="field"><label for="autoConv">Minimum conviction</label><input class="inp mono" id="autoConv" inputmode="numeric" value="${autoCfg.minConv}"></div><div class="field"><label for="autoRisk">Max risk per trade (%)</label><input class="inp mono" id="autoRisk" inputmode="decimal" value="${autoCfg.maxRisk}"></div></div>
+    <p class="note" style="margin-top:8px">It sends only when you tap Run analysis, the signal is BUY or SELL, conviction is at least your minimum, Risk is not HIGH, and the risk stays under ${autoCfg.maxRisk}%. It works only while this page is open. The risk limit also blocks manual sends from the ticket. On a small account, gold at the 0.01 minimum lot can risk more than 3% of equity, so raise the limit only if you accept that. Fully hands-free trading needs the analysis to move onto the server, which is the next upgrade.</p>
+    ${autoLog.length ? `<p class="note mono" style="margin-top:8px">${autoLog.map(esc).join("<br>")}</p>` : ""}</div>`;
+  return h;
+}
+function wirePos() {
+  const rl = $("#posReload"); if (rl) rl.onclick = () => { tradeInfo = null; loadTrade(); };
+  document.querySelectorAll(".posClose").forEach(b => twoTap(b, async () => { const m = $("#posMsg"); m.className = "status"; m.textContent = "Closing…"; try { await api("/api/trade/close", { method: "POST", body: JSON.stringify({ id: b.dataset.id }) }); m.textContent = "Closed."; setTimeout(loadTrade, 1000); } catch (e) { m.className = "status err"; m.textContent = e.message; } }));
+  const ca = $("#closeAll"); if (ca) twoTap(ca, async () => { const m = $("#posMsg"); m.className = "status"; m.textContent = "Closing everything…"; try { const r = await api("/api/trade/closeall", { method: "POST", body: "{}" }); m.textContent = `Closed ${r.closed}${r.failed ? `, ${r.failed} failed` : ""}.`; setTimeout(loadTrade, 1000); } catch (e) { m.className = "status err"; m.textContent = e.message; } });
+  const on = $("#autoOn"); if (on) on.onchange = () => {
+    if (on.checked && tradeInfo && tradeInfo.account && tradeInfo.account.mode === "REAL" && !confirm("This account uses real money. Auto-send will place real trades. Turn it on?")) { on.checked = false; return; }
+    autoCfg.on = on.checked; store.set("c2.auto", autoCfg); };
+  const ar = $("#autoRisk"); if (ar) ar.oninput = () => { const v = parseFloat(ar.value); if (v > 0 && v <= 100) { autoCfg.maxRisk = v; store.set("c2.auto", autoCfg); } };
+  const ac = $("#autoConv"); if (ac) ac.oninput = () => { const v = parseInt(ac.value, 10); if (v >= 0 && v <= 100) { autoCfg.minConv = v; store.set("c2.auto", autoCfg); } };
+}
+async function maybeAuto(key) {
+  const A = results[key]; if (!autoCfg.on || !A || !A.plan || !PAIRS[key].vpp) return;
+  const note = m => { autoLog.unshift(`${hm(Date.now())} ${key}: ${m}`); autoLog = autoLog.slice(0, 5); if (location.hash === "#auto") renderAuto(); };
+  if (!tradeInfo || tradeInfo.configured === undefined) { await loadTrade(); }
+  if (!tradeInfo || !tradeInfo.configured) return note("not connected to an account");
+  if (A.conv < autoCfg.minConv) return note(`skipped, conviction ${A.conv} is under ${autoCfg.minConv}`);
+  if (A.level === "HIGH") return note("skipped, risk is HIGH");
+  const t = ticket(A), rr = t && riskAt(A, t.vol); if (!t || rr.pct > autoCfg.maxRisk) return note(`skipped, risk ${rr ? rr.pct.toFixed(1) + "%" : "unknown"} is over the ${autoCfg.maxRisk}% limit`);
+  try { const r = await api("/api/trade/order", { method: "POST", body: JSON.stringify({ pair: key, side: A.verdict, volume: t.vol, sl: A.plan.sl, tp: A.plan.tp1 }) }); note(`sent ${r.side} ${r.volume} lot`); try { await addLog(A); } catch {} tradeInfo = null; loadTrade(); }
+  catch (e) { note("not sent: " + (e.message || "error")); }
 }
 /* ---------- navigation ---------- */
-const VIEWS = ["signal", "events", "assistant", "log"];
+const VIEWS = ["signal", "events", "assistant", "auto", "log"];
 function go(v) { if (location.hash !== "#" + v) location.hash = v; else show(); }
 function show() {
   const v = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "signal";
   VIEWS.forEach(n => $("#v-" + n).classList.toggle("on", n === v));
+  if (v === "events" && !calData) loadCal(); else if (v === "events") renderCal();
+  if (v === "auto") { if (!tradeInfo) loadTrade(); else renderAuto(); }
   document.querySelectorAll(".tab").forEach(t => t.toggleAttribute("aria-current", false) || (t.dataset.v === v ? t.setAttribute("aria-current", "page") : t.removeAttribute("aria-current")));
 }
 window.addEventListener("hashchange", show);

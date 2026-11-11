@@ -3,7 +3,8 @@
    Environment variables (set them in Render, never in the code):
    TWELVE_KEY, FRED_KEY, FINNHUB_KEY, AV_KEY (optional), LLM_KEY,
    UPSTASH_URL, UPSTASH_TOKEN, ACCESS_KEY (recommended),
-   LLM_PROVIDER (gemini | anthropic, default gemini), LLM_MODEL (optional for gemini, required for anthropic) */
+   LLM_PROVIDER (gemini | anthropic, default gemini), LLM_MODEL (optional for gemini, required for anthropic).
+   Auto trading (optional): METAAPI_TOKEN, METAAPI_ACCOUNT_ID, METAAPI_REGION (default new-york), SYMBOL_SUFFIX, NAS_SYMBOL, MAX_LOT (default 0.05), MAX_POSITIONS (default 3) */
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
@@ -178,11 +179,80 @@ async function upstash(cmd) {
   return j.result;
 }
 
+/* ---------- economic calendar (Forex Factory weekly JSON, free, no key) ---------- */
+const CAL_URLS = ["https://nfs.faireconomy.media/ff_calendar_thisweek.json", "https://nfs.faireconomy.media/ff_calendar_nextweek.json"];
+let calStale = null;
+async function calendar() {
+  try {
+    const out = await cached("cal", 30 * 60000, async () => {
+      const lists = await Promise.all(CAL_URLS.map((u, i) => getJson(u).catch(e => (i === 0 ? Promise.reject(e) : []))));
+      const events = lists.flat().filter(x => x && x.title && x.date)
+        .map(x => ({ title: String(x.title).slice(0, 80), cur: String(x.country || "").toUpperCase(), t: Date.parse(x.date), impact: String(x.impact || ""), forecast: String(x.forecast || ""), previous: String(x.previous || "") }))
+        .filter(x => Number.isFinite(x.t) && ["USD", "GBP", "JPY"].includes(x.cur) && ["High", "Medium"].includes(x.impact))
+        .sort((a, b) => a.t - b.t);
+      if (!events.length) throw new Error("The calendar feed returned no events");
+      return { events, fetched: Date.now(), stale: false };
+    });
+    calStale = out; return out;
+  } catch (e) {
+    if (calStale) return Object.assign({}, calStale, { stale: true });
+    throw e;
+  }
+}
+
+/* ---------- auto trading through MetaApi (optional) ---------- */
+const MT_SYM = { XAUUSD: "XAUUSD", USDJPY: "USDJPY", GBPUSD: "GBPUSD", BTCUSD: "BTCUSD", NASDAQ: E.NAS_SYMBOL || "USTEC" };
+const mtSymbol = pair => { if (!MT_SYM[pair]) throw new Error("Unknown pair"); return MT_SYM[pair] + (E.SYMBOL_SUFFIX || ""); };
+const MAX_LOT = parseFloat(E.MAX_LOT) > 0 ? parseFloat(E.MAX_LOT) : 0.05;
+const MAX_POS = parseInt(E.MAX_POSITIONS, 10) > 0 ? parseInt(E.MAX_POSITIONS, 10) : 3;
+const mtReady = () => !!(E.METAAPI_TOKEN && E.METAAPI_ACCOUNT_ID);
+async function mt(sub, body) {
+  const base = `https://mt-client-api-v1.${E.METAAPI_REGION || "new-york"}.agiliumtrade.ai/users/current/accounts/${encodeURIComponent(need("METAAPI_ACCOUNT_ID"))}`;
+  const j = await getJson(base + sub, { method: body ? "POST" : "GET", headers: { "auth-token": need("METAAPI_TOKEN"), "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  if (j && typeof j.error === "string" && !j.stringCode) throw new Error(String(j.message || j.error).slice(0, 200));
+  return j;
+}
+const tradeOk = r => r && ["TRADE_RETCODE_DONE", "TRADE_RETCODE_PLACED", "TRADE_RETCODE_DONE_PARTIAL"].includes(r.stringCode);
+async function tradeStatus() {
+  if (!mtReady()) return { configured: false };
+  const [a, pos] = await Promise.all([mt("/account-information"), mt("/positions")]);
+  return {
+    configured: true,
+    account: { login: a.login, server: a.server, name: a.name, balance: a.balance, equity: a.equity, currency: a.currency, leverage: a.leverage, mode: /DEMO/i.test(String(a.tradeMode || "")) ? "DEMO" : /REAL/i.test(String(a.tradeMode || "")) ? "REAL" : "UNKNOWN" },
+    positions: (Array.isArray(pos) ? pos : []).map(p => ({ id: String(p.id), symbol: p.symbol, type: String(p.type || "").replace("POSITION_TYPE_", ""), volume: p.volume, open: p.openPrice, sl: p.stopLoss, tp: p.takeProfit, profit: p.profit, comment: p.comment || "" })),
+    limits: { maxLot: MAX_LOT, maxPositions: MAX_POS }
+  };
+}
+const recent = new Map();
+async function placeOrder(b) {
+  const side = String(b.side || "").toUpperCase(), symbol = mtSymbol(b.pair), vol = Math.round(parseFloat(b.volume) * 100) / 100, sl = parseFloat(b.sl), tp = parseFloat(b.tp);
+  if (b.pair === "NASDAQ") throw new Error("Nasdaq has no lot sizing yet, so it is switched off for auto trading");
+  if (!["BUY", "SELL"].includes(side)) throw new Error("Side must be BUY or SELL");
+  if (!(vol >= 0.01)) throw new Error("Lot must be at least 0.01");
+  if (vol > MAX_LOT) throw new Error(`Lot ${vol} is above the server cap of ${MAX_LOT}. Raise MAX_LOT in Render if you really want that.`);
+  if (!(sl > 0) || !(tp > 0) || sl === tp) throw new Error("A stop loss and a take profit are required");
+  const key = b.pair + side, last = recent.get(key);
+  if (last && Date.now() - last < 15000) throw new Error("That order was just sent. Wait a few seconds.");
+  recent.set(key, Date.now());
+  const pos = await mt("/positions");
+  const list = Array.isArray(pos) ? pos : [];
+  if (list.length >= MAX_POS) throw new Error(`Already ${list.length} open trades (limit ${MAX_POS}).`);
+  if (list.some(p => p.symbol === symbol)) throw new Error(`You already have an open ${symbol} trade.`);
+  const r = await mt("/trade", { actionType: side === "BUY" ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol, volume: vol, stopLoss: +sl.toFixed(5), takeProfit: +tp.toFixed(5), comment: "Chloe2" });
+  if (!tradeOk(r)) throw new Error(String(r && (r.message || r.stringCode) || "Broker refused the order").slice(0, 200));
+  return { ok: true, symbol, side, volume: vol, orderId: r.orderId, positionId: r.positionId, message: r.message };
+}
+async function closePosition(id) {
+  const r = await mt("/trade", { actionType: "POSITION_CLOSE_ID", positionId: String(id) });
+  if (!tradeOk(r)) throw new Error(String(r && (r.message || r.stringCode) || "Broker refused the close").slice(0, 200));
+  return { ok: true };
+}
+
 /* ---------- routes ---------- */
 async function api(req, res, u) {
   const p = u.pathname, q = u.searchParams;
   if (p === "/api/status") {
-    return send(res, 200, { locked: !!E.ACCESS_KEY, keys: { twelve: !!E.TWELVE_KEY, fred: !!E.FRED_KEY, finnhub: !!E.FINNHUB_KEY, av: !!E.AV_KEY, llm: !!E.LLM_KEY, upstash: !!(E.UPSTASH_URL && E.UPSTASH_TOKEN) }, provider: (E.LLM_PROVIDER || "gemini").toLowerCase() });
+    return send(res, 200, { locked: !!E.ACCESS_KEY, keys: { twelve: !!E.TWELVE_KEY, fred: !!E.FRED_KEY, finnhub: !!E.FINNHUB_KEY, av: !!E.AV_KEY, llm: !!E.LLM_KEY, upstash: !!(E.UPSTASH_URL && E.UPSTASH_TOKEN), trade: mtReady() }, provider: (E.LLM_PROVIDER || "gemini").toLowerCase() });
   }
   if (E.ACCESS_KEY && !same(req.headers["x-access"] || "", E.ACCESS_KEY)) return send(res, 401, { error: "locked" });
   if (p === "/api/ping") return send(res, 200, { ok: true });
@@ -191,6 +261,15 @@ async function api(req, res, u) {
   if (p === "/api/cot") return send(res, 200, await cot(q.get("pair")));
   if (p === "/api/options") return send(res, 200, await options(q.get("symbol")));
   if (p === "/api/sentiment") return send(res, 200, await sentiment(q.get("pair")));
+  if (p === "/api/calendar") return send(res, 200, await calendar());
+  if (p === "/api/trade/status") return send(res, 200, await tradeStatus());
+  if (p === "/api/trade/order" && req.method === "POST") return send(res, 200, await placeOrder(await readBody(req)));
+  if (p === "/api/trade/close" && req.method === "POST") { const b = await readBody(req); if (!b.id) throw new Error("No position id"); return send(res, 200, await closePosition(b.id)); }
+  if (p === "/api/trade/closeall" && req.method === "POST") {
+    const pos = await mt("/positions"); let n = 0, fail = 0;
+    for (const x of (Array.isArray(pos) ? pos : [])) { try { await closePosition(x.id); n++; } catch { fail++; } }
+    return send(res, 200, { ok: fail === 0, closed: n, failed: fail });
+  }
   if (p === "/api/llm" && req.method === "POST") {
     const b = await readBody(req), m = b.messages;
     if (!Array.isArray(m) || !m.length || m.length > 24 || m.some(x => !x || !["user", "assistant"].includes(x.role) || typeof x.content !== "string" || x.content.length > 14000)) throw new Error("Bad messages");
