@@ -194,25 +194,58 @@ async function upstash(cmd) {
   return j.result;
 }
 
-/* ---------- economic calendar (Forex Factory weekly JSON, free, no key) ---------- */
-const CAL_URLS = ["https://nfs.faireconomy.media/ff_calendar_thisweek.json", "https://nfs.faireconomy.media/ff_calendar_nextweek.json"];
-let calStale = null;
-async function calendar() {
-  try {
-    const out = await cached("cal", 30 * 60000, async () => {
-      const lists = await Promise.all(CAL_URLS.map((u, i) => getJson(u).catch(e => (i === 0 ? Promise.reject(e) : []))));
-      const events = lists.flat().filter(x => x && x.title && x.date)
-        .map(x => ({ title: String(x.title).slice(0, 80), cur: String(x.country || "").toUpperCase(), t: Date.parse(x.date), impact: String(x.impact || ""), forecast: String(x.forecast || ""), previous: String(x.previous || "") }))
-        .filter(x => Number.isFinite(x.t) && ["USD", "GBP", "JPY"].includes(x.cur) && ["High", "Medium"].includes(x.impact))
-        .sort((a, b) => a.t - b.t);
-      if (!events.length) throw new Error("The calendar feed returned no events");
-      return { events, fetched: Date.now(), stale: false };
-    });
-    calStale = out; return out;
-  } catch (e) {
-    if (calStale) return Object.assign({}, calStale, { stale: true });
-    throw e;
+/* ---------- economic calendar: free weekly feed, saved copy, then AI web search as backup ---------- */
+const FF_HOSTS = ["https://nfs.faireconomy.media", "https://cdn-nfs.faireconomy.media"];
+const CAL_CUR = ["USD", "GBP", "JPY"];
+let calMem = null, calFFFail = 0;
+function normEvents(list) {
+  return (Array.isArray(list) ? list : []).filter(x => x && x.title && (x.date || x.time))
+    .map(x => ({ title: String(x.title).slice(0, 80), cur: String(x.country || "").toUpperCase(), t: Date.parse(x.date || x.time), impact: /^high$/i.test(x.impact) ? "High" : /^medium$/i.test(x.impact) ? "Medium" : String(x.impact || ""), forecast: String(x.forecast || ""), previous: String(x.previous || "") }))
+    .filter(x => Number.isFinite(x.t) && CAL_CUR.includes(x.cur) && ["High", "Medium"].includes(x.impact))
+    .sort((a, b) => a.t - b.t);
+}
+async function fetchFF() {
+  const wk = ["thisweek"]; if (new Date().getUTCDay() >= 4 || new Date().getUTCDay() === 0) wk.push("nextweek");
+  let events = [], lastErr = "no answer";
+  for (let i = 0; i < wk.length; i++) {
+    let got = null;
+    for (const h of FF_HOSTS) {
+      try {
+        const r = await fetch(`${h}/ff_calendar_${wk[i]}.json`, { headers: { "user-agent": "Mozilla/5.0 (compatible; Chloe2/1.0)", accept: "application/json" } });
+        if (!r.ok) { lastErr = `HTTP ${r.status}`; continue; }
+        const j = await r.json(); if (Array.isArray(j)) { got = j; break; }
+      } catch (e) { lastErr = String(e && e.message || e); }
+    }
+    if (got) events = events.concat(normEvents(got)); else if (i === 0) throw new Error("Calendar feed: " + lastErr);
   }
+  if (!events.length) throw new Error("Calendar feed returned no events");
+  return events;
+}
+async function aiCalendar() {
+  const now = new Date(), prompt = `You are an economic calendar researcher. Today is ${now.toUTCString()}.
+Search the web for the high and medium impact economic events scheduled from now until 7 days ahead for the United States (USD), United Kingdom (GBP) and Japan (JPY). Include inflation (CPI, PPI), jobs (payrolls, unemployment, jobless claims), central bank rate decisions and speeches (Fed, BOE, BOJ), GDP, retail sales and PMIs. Use the official or consensus release times.
+Reply with only a JSON array, no markdown. Each item: {"title":"","country":"USD|GBP|JPY","impact":"High|Medium","time":"ISO 8601 UTC like 2026-11-12T13:30:00Z","forecast":"","previous":""}. Leave forecast or previous empty if unknown. Never invent an event you could not find.`;
+  const meta = {}, text = await llm([{ role: "user", content: prompt }], { json: true, search: true, maxTokens: 4000, meta });
+  const events = normEvents(parseLoose(text)).filter(x => x.t > Date.now() - 3 * 3600000 && x.t < Date.now() + 8 * 86400000);
+  if (!events.length) throw new Error("The AI search found no events");
+  return events;
+}
+async function calendar() {
+  const now = Date.now();
+  if (calMem && now - calMem.fetched < (calMem.source === "feed" ? 6 : 3) * 3600000 && calMem.events.some(x => x.t > now - 3 * 3600000)) return calMem;
+  let why = "";
+  if (now - calFFFail > 15 * 60000) {
+    try { const events = await fetchFF(); calMem = { events, fetched: now, source: "feed", stale: false }; if (E.UPSTASH_URL && E.UPSTASH_TOKEN) upstash(["SET", "chloe2:cal", JSON.stringify(calMem)]).catch(() => {}); return calMem; }
+    catch (e) { calFFFail = now; why = e.message; }
+  }
+  if (E.UPSTASH_URL && E.UPSTASH_TOKEN) {
+    try { const r = await upstash(["GET", "chloe2:cal"]); const c = r ? JSON.parse(r) : null; if (c && c.events && now - c.fetched < 4 * 86400000 && c.events.some(x => x.t > now)) return Object.assign({}, c, { stale: true }); } catch {}
+  }
+  if (E.LLM_KEY) {
+    try { const events = await aiCalendar(); calMem = { events, fetched: now, source: "ai", stale: false }; return calMem; } catch (e) { why += (why ? "; " : "") + e.message; }
+  }
+  if (calMem) return Object.assign({}, calMem, { stale: true });
+  throw new Error("Could not load the news calendar. " + why.slice(0, 140));
 }
 
 /* ---------- auto trading through MetaApi (optional) ---------- */
@@ -244,76 +277,4 @@ async function placeOrder(b) {
   if (b.pair === "NASDAQ") throw new Error("Nasdaq has no lot sizing yet, so it is switched off for auto trading");
   if (!["BUY", "SELL"].includes(side)) throw new Error("Side must be BUY or SELL");
   if (!(vol >= 0.01)) throw new Error("Lot must be at least 0.01");
-  if (vol > MAX_LOT) throw new Error(`Lot ${vol} is above the server cap of ${MAX_LOT}. Raise MAX_LOT in Render if you really want that.`);
-  if (!(sl > 0) || !(tp > 0) || sl === tp) throw new Error("A stop loss and a take profit are required");
-  const key = b.pair + side, last = recent.get(key);
-  if (last && Date.now() - last < 15000) throw new Error("That order was just sent. Wait a few seconds.");
-  recent.set(key, Date.now());
-  const pos = await mt("/positions");
-  const list = Array.isArray(pos) ? pos : [];
-  if (list.length >= MAX_POS) throw new Error(`Already ${list.length} open trades (limit ${MAX_POS}).`);
-  if (list.some(p => p.symbol === symbol)) throw new Error(`You already have an open ${symbol} trade.`);
-  const r = await mt("/trade", { actionType: side === "BUY" ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol, volume: vol, stopLoss: +sl.toFixed(5), takeProfit: +tp.toFixed(5), comment: "Chloe2" });
-  if (!tradeOk(r)) throw new Error(String(r && (r.message || r.stringCode) || "Broker refused the order").slice(0, 200));
-  return { ok: true, symbol, side, volume: vol, orderId: r.orderId, positionId: r.positionId, message: r.message };
-}
-async function closePosition(id) {
-  const r = await mt("/trade", { actionType: "POSITION_CLOSE_ID", positionId: String(id) });
-  if (!tradeOk(r)) throw new Error(String(r && (r.message || r.stringCode) || "Broker refused the close").slice(0, 200));
-  return { ok: true };
-}
-
-/* ---------- routes ---------- */
-async function api(req, res, u) {
-  const p = u.pathname, q = u.searchParams;
-  if (p === "/api/status") {
-    return send(res, 200, { locked: !!E.ACCESS_KEY, keys: { twelve: !!E.TWELVE_KEY, fred: !!E.FRED_KEY, finnhub: !!E.FINNHUB_KEY, av: !!E.AV_KEY, llm: !!E.LLM_KEY, upstash: !!(E.UPSTASH_URL && E.UPSTASH_TOKEN), trade: mtReady() }, provider: (E.LLM_PROVIDER || "gemini").toLowerCase() });
-  }
-  if (E.ACCESS_KEY && !same(req.headers["x-access"] || "", E.ACCESS_KEY)) return send(res, 401, { error: "locked" });
-  if (p === "/api/ping") return send(res, 200, { ok: true });
-  if (p === "/api/series") return send(res, 200, { rows: await series(q.get("symbol"), q.get("interval"), q.get("size")) });
-  if (p === "/api/macro") return send(res, 200, await macro());
-  if (p === "/api/cot") return send(res, 200, await cot(q.get("pair")));
-  if (p === "/api/options") return send(res, 200, await options(q.get("symbol")));
-  if (p === "/api/sentiment") return send(res, 200, await sentiment(q.get("pair")));
-  if (p === "/api/calendar") return send(res, 200, await calendar());
-  if (p === "/api/trade/status") return send(res, 200, await tradeStatus());
-  if (p === "/api/trade/order" && req.method === "POST") return send(res, 200, await placeOrder(await readBody(req)));
-  if (p === "/api/trade/close" && req.method === "POST") { const b = await readBody(req); if (!b.id) throw new Error("No position id"); return send(res, 200, await closePosition(b.id)); }
-  if (p === "/api/trade/closeall" && req.method === "POST") {
-    const pos = await mt("/positions"); let n = 0, fail = 0;
-    for (const x of (Array.isArray(pos) ? pos : [])) { try { await closePosition(x.id); n++; } catch { fail++; } }
-    return send(res, 200, { ok: fail === 0, closed: n, failed: fail });
-  }
-  if (p === "/api/llm" && req.method === "POST") {
-    const b = await readBody(req), m = b.messages;
-    if (!Array.isArray(m) || !m.length || m.length > 24 || m.some(x => !x || !["user", "assistant"].includes(x.role) || typeof x.content !== "string" || x.content.length > 14000)) throw new Error("Bad messages");
-    const meta = {}, text = await llm(m, { json: !!b.json, maxTokens: Math.min(+b.maxTokens || 1200, 3000), search: !!b.search, meta });
-    return send(res, 200, { text, sources: meta.sources || [], searched: !!b.search && !meta.searchFailed });
-  }
-  if (p === "/api/log") {
-    if (req.method === "GET") { const r = await upstash(["GET", "chloe2:log"]); let log = []; try { log = r ? JSON.parse(r) : []; } catch {} return send(res, 200, { log }); }
-    if (req.method === "PUT") { const b = await readBody(req, 400000); if (!Array.isArray(b.log)) throw new Error("Bad log"); await upstash(["SET", "chloe2:log", JSON.stringify(b.log.slice(0, 300))]); return send(res, 200, { ok: true }); }
-  }
-  return send(res, 404, { error: "Not found" });
-}
-
-function serveStatic(res, p) {
-  if (p !== "/" && p !== "/index.html") return send(res, 404, "Not found", "text/plain");
-  fs.readFile(path.join(__dirname, "index.html"), (err, data) => {
-    if (err) return send(res, 404, "index.html is missing from the repo", "text/plain");
-    res.writeHead(200, { "content-type": MIME[".html"], "cache-control": "no-cache" });
-    res.end(data);
-  });
-}
-
-http.createServer(async (req, res) => {
-  const u = new URL(req.url, "http://localhost");
-  try {
-    if (u.pathname === "/health") return send(res, 200, "ok", "text/plain");
-    if (u.pathname.startsWith("/api/")) return await api(req, res, u);
-    return serveStatic(res, u.pathname);
-  } catch (e) {
-    send(res, 502, { error: String(e && e.message || e).slice(0, 240) });
-  }
-}).listen(PORT, () => console.log("Chloe 2 listening on " + PORT));
+  if (vol > MAX_LOT) throw new Error(`Lot ${vol} is above the server cap of ${
