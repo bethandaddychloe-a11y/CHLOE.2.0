@@ -129,7 +129,7 @@ async function geminiModel() {
   geminiPick = { at: Date.now(), name };
   return name;
 }
-async function llm(messages, { json = false, maxTokens = 1200 } = {}) {
+async function llm(messages, { json = false, maxTokens = 1200, search = false, meta = null } = {}) {
   const key = need("LLM_KEY"), prov = (E.LLM_PROVIDER || "gemini").toLowerCase();
   if (prov === "anthropic") {
     const model = need("LLM_MODEL");
@@ -139,8 +139,23 @@ async function llm(messages, { json = false, maxTokens = 1200 } = {}) {
   }
   const model = await geminiModel();
   const body = { contents: messages.map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })), generationConfig: { maxOutputTokens: Math.max(maxTokens, 2048), temperature: 0.4 } };
-  if (json) body.generationConfig.responseMimeType = "application/json";
-  const j = await getJson(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  if (json && !search) body.generationConfig.responseMimeType = "application/json";
+  if (search) { body.tools = [{ google_search: {} }]; body.generationConfig.maxOutputTokens = Math.max(maxTokens, 4096); }
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+  let j = await getJson(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  if (search && j.error && !/quota|rate|exhaust/i.test(j.error.message || "")) {
+    delete body.tools; if (json) body.generationConfig.responseMimeType = "application/json";
+    j = await getJson(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    if (meta) meta.searchFailed = true;
+  } else if (search && j.error) {
+    delete body.tools; if (json) body.generationConfig.responseMimeType = "application/json";
+    j = await getJson(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    if (meta) meta.searchFailed = true;
+  }
+  if (meta && !meta.searchFailed) {
+    const seen = new Set(); meta.sources = [];
+    for (const c of ((j.candidates || [])[0]?.groundingMetadata?.groundingChunks || [])) { const w = c.web; if (w && w.uri && !seen.has(w.uri) && meta.sources.length < 5) { seen.add(w.uri); meta.sources.push({ title: String(w.title || w.uri).slice(0, 80), url: w.uri }); } }
+  }
   if (j.error) throw new Error(/quota|rate|exhaust/i.test(j.error.message || "") ? "The free AI limit was reached. Wait a minute and try again." : String(j.error.message || "AI error").slice(0, 200));
   const text = ((j.candidates || [])[0]?.content?.parts || []).map(p => p.text || "").join("");
   if (!text) throw new Error("The AI returned no text");
@@ -273,7 +288,8 @@ async function api(req, res, u) {
   if (p === "/api/llm" && req.method === "POST") {
     const b = await readBody(req), m = b.messages;
     if (!Array.isArray(m) || !m.length || m.length > 24 || m.some(x => !x || !["user", "assistant"].includes(x.role) || typeof x.content !== "string" || x.content.length > 14000)) throw new Error("Bad messages");
-    return send(res, 200, { text: await llm(m, { json: !!b.json, maxTokens: Math.min(+b.maxTokens || 1200, 3000) }) });
+    const meta = {}, text = await llm(m, { json: !!b.json, maxTokens: Math.min(+b.maxTokens || 1200, 3000), search: !!b.search, meta });
+    return send(res, 200, { text, sources: meta.sources || [], searched: !!b.search && !meta.searchFailed });
   }
   if (p === "/api/log") {
     if (req.method === "GET") { const r = await upstash(["GET", "chloe2:log"]); let log = []; try { log = r ? JSON.parse(r) : []; } catch {} return send(res, 200, { log }); }
