@@ -187,6 +187,8 @@ details.more summary{cursor:pointer;font-size:13px;color:var(--accent)}
 .pos-top .pl{margin-left:auto;font-family:var(--font-mono);font-weight:500}
 .steps{margin:8px 0 0;padding-left:20px;font-size:14px;display:grid;gap:6px}
 .steps code{font-family:var(--font-mono);font-size:12.5px;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:0 5px}
+.chip.track{color:var(--accent)}
+.trk{font-size:12.5px;color:var(--muted);font-family:var(--font-mono);overflow-wrap:anywhere}
 .btn.danger{border-color:var(--sell);color:var(--sell)}
 /* log */
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
@@ -273,6 +275,7 @@ details.more summary{cursor:pointer;font-size:13px;color:var(--accent)}
 
     <!-- LOG -->
     <section class="view" id="v-log" aria-label="Trade log">
+      <div class="actions" style="margin:0 0 4px"><button class="btn small" id="chkBtn" type="button">Check open trades now</button></div><p class="status" id="trkMsg" role="status"></p>
       <dl class="stats" id="stats"></dl>
       <p class="foot" id="logNote"></p>
       <div id="logList" style="display:flex;flex-direction:column;gap:10px"></div>
@@ -606,10 +609,11 @@ function renderPlan() {
     </dl>
     ${m.lot !== null && m.lot < 0.01 ? `<p class="note" style="margin-top:8px;color:var(--warn)">The smallest lot already risks more than your setting. Use a tighter timeframe, a smaller stop, or skip it.</p>` : ""}
     <p class="note" style="margin-top:8px">Assumes standard contract sizes (gold 100 oz, forex 100,000, BTC 1). Risk is cut by the Risk analyst's ×${A.mult}. Check your broker's contract size.</p>
-    <div class="actions"><button class="btn primary" id="saveBtn" type="button">Save to log</button><button class="btn" id="askBtn" type="button">Ask Chloe about this</button></div>
+    <div class="actions"><button class="btn primary" id="enterBtn" type="button">I entered this trade</button><button class="btn" id="saveBtn" type="button">Save without entering</button><button class="btn" id="askBtn" type="button">Ask Chloe about this</button></div>
     <p class="status" id="saveMsg" role="status"></p>`;
   const upd = () => { const e = parseFloat($("#eq").value), r = parseFloat($("#rk").value); if (e > 0 && r > 0) { acct = { eq: e, risk: r }; store.set("c2.acct", acct); const mm = planMath(A), dd = $(".plan-out"); dd.children[4].lastElementChild.textContent = mm.lotTxt; dd.children[5].lastElementChild.textContent = "$" + mm.riskUSD.toFixed(2); } };
   $("#eq").oninput = upd; $("#rk").oninput = upd;
+  $("#enterBtn").onclick = async () => { const ok = await addLog(A, true); $("#saveMsg").textContent = ok ? "Tracking started. Open the Log tab to watch it. I will mark it won or lost when the stop or target 1 is hit." : "Could not save."; if (ok) { $("#enterBtn").disabled = true; checkTrades(); } };
   $("#saveBtn").onclick = async () => { const ok = await addLog(A); $("#saveMsg").textContent = ok ? "Saved to your log." : "Could not save."; };
   $("#askBtn").onclick = () => { go("assistant"); send(`Walk me through this ${pair} ${A.verdict} signal. What would make you skip it?`); };
 }
@@ -633,33 +637,35 @@ function chartSVG(A) {
 let log = [], localMode = false;
 function logStats() {
   const res = log.filter(l => l.outcome === "win" || l.outcome === "loss"), wins = res.filter(l => l.outcome === "win").length;
-  return { total: log.length, resolved: res.length, wins, rate: res.length ? wins / res.length : null, res };
+  const open = log.filter(l => l && l.entered && !l.outcome).length, net = wins * 1.5 - (res.length - wins);
+  return { total: log.length, resolved: res.length, wins, rate: res.length ? wins / res.length : null, res, open, net };
 }
 let useServer = false;
 async function persist() {
   if (useServer) await api("/api/log", { method: "PUT", body: JSON.stringify({ log: log.slice(0, 300) }) });
   else store.set("c2.log", log);
 }
-async function addLog(A) {
-  const P = A.plan, e = { id: "s" + Date.now(), ts: Date.now(), pair: A.key, dir: A.verdict, conv: A.conv, entry: P.entry, sl: P.sl, tp1: P.tp1, tp2: P.tp2, mult: A.mult, outcome: null,
+async function addLog(A, entered) {
+  const P = A.plan, e = { id: "s" + Date.now(), ts: Date.now(), entered: !!entered, enteredAt: entered ? Date.now() : null, pair: A.key, dir: A.verdict, conv: A.conv, entry: P.entry, sl: P.sl, tp1: P.tp1, tp2: P.tp2, mult: A.mult, outcome: null,
     votes: { macro: voteOf(A.council.macro.s), tech: voteOf(A.council.tech.s), liq: voteOf(A.council.liq.s), sent: voteOf(A.council.sent.s) } };
   log.unshift(e);
   try { await persist(); } catch { log.shift(); return false; }
   renderLog(); return true;
 }
-async function setOutcome(id, outcome) { const l = log.find(x => x.id === id); if (!l) return; l.outcome = outcome; try { await persist(); } catch {} renderLog(); }
+async function setOutcome(id, outcome) { const l = log.find(x => x.id === id); if (!l) return; l.outcome = outcome; l.auto = false; if (!outcome) l.note = ""; try { await persist(); } catch {} renderLog(); }
 async function delLog(id) { log = log.filter(x => x.id !== id); try { await persist(); } catch {} renderLog(); }
 function renderLog() {
   const s = logStats();
-  $("#stats").innerHTML = `<div class="stat"><dt>Saved</dt><dd>${s.total}</dd></div><div class="stat"><dt>Resolved</dt><dd>${s.resolved}</dd></div><div class="stat"><dt>Win rate</dt><dd>${s.rate === null ? "-" : Math.round(s.rate * 100) + "%"}</dd></div>`;
-  $("#logNote").textContent = s.resolved < 20
+  $("#stats").innerHTML = `<div class="stat"><dt>Tracking</dt><dd>${s.open}</dd></div><div class="stat"><dt>Resolved</dt><dd>${s.resolved}</dd></div><div class="stat"><dt>Win rate</dt><dd>${s.rate === null ? "-" : Math.round(s.rate * 100) + "%"}</dd></div>`;
+  $("#logNote").textContent = (s.resolved ? `Net result: ${s.net >= 0 ? "+" : ""}${s.net.toFixed(1)}R (a win counts +1.5R at target 1, a loss -1R). ` : "") + (s.resolved < 20
     ? `Conviction scores stay uncalibrated until you mark about 20 trades as won or lost (${s.resolved} so far).${localMode ? " This view saves to this browser only." : ""}`
-    : `Based on ${s.resolved} resolved trades. Compare this win rate with the conviction scores before trusting them.`;
+    : `Based on ${s.resolved} resolved trades. Compare this win rate with the conviction scores before trusting them.`);
   const el = $("#logList");
-  if (!log.length) { el.innerHTML = `<div class="card"><p class="note">Nothing saved yet. Run an analysis, then tap Save to log on the trade plan. Mark each one won or lost afterwards so Chloe 2 learns what works.</p></div>`; renderHitLine(); return; }
+  if (!log.length) { el.innerHTML = `<div class="card"><p class="note">Nothing here yet. Run an analysis, then tap "I entered this trade" on the trade plan. Chloe 2 will watch the price and mark it won or lost when the target or the stop is hit.</p></div>`; renderHitLine(); return; }
   el.innerHTML = log.filter(l => l && l.dir && l.pair).map(l => { const c = PAIRS[l.pair] || PAIRS.XAUUSD, d = c.dec, dt = new Date(l.ts);
-    return `<article class="card entry" data-id="${esc(l.id)}"><div class="entry-top"><b class="mono">${esc(l.pair)}</b><span class="chip ${l.dir.toLowerCase()}">${esc(l.dir)}</span><span class="note mono">conv ${l.conv}</span><span class="when">${dt.toLocaleDateString(undefined, { month: "short", day: "numeric" })} ${dt.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</span></div>
+    return `<article class="card entry" data-id="${esc(l.id)}"><div class="entry-top"><b class="mono">${esc(l.pair)}</b><span class="chip ${l.dir.toLowerCase()}">${esc(l.dir)}</span><span class="note mono">conv ${l.conv}</span>${l.entered && !l.outcome ? `<span class="chip track">Tracking</span>` : l.auto && l.outcome ? `<span class="chip ${l.outcome === "win" ? "buy" : "sell"}">${l.outcome === "win" ? "Won (auto)" : "Lost (auto)"}</span>` : ""}<span class="when">${dt.toLocaleDateString(undefined, { month: "short", day: "numeric" })} ${dt.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</span></div>
       <p class="entry-lv">in ${(+l.entry).toFixed(d)} · sl ${(+l.sl).toFixed(d)} · tp1 ${(+l.tp1).toFixed(d)} · tp2 ${(+l.tp2).toFixed(d)}</p>
+      ${l.entered && !l.outcome && track[l.id] ? `<p class="trk">now ${track[l.id].price.toFixed(d)} · ${track[l.id].r >= 0 ? "+" : ""}${track[l.id].r.toFixed(2)}R · checked ${hm(track[l.id].at)}</p>` : ""}${l.note ? `<p class="trk">${esc(l.note)}</p>` : ""}
       <div class="seg" role="group" aria-label="Outcome">${["win", "loss", "skip"].map(o => `<button type="button" data-o="${o}" aria-pressed="${l.outcome === o}">${o === "win" ? "Won" : o === "loss" ? "Lost" : "Skipped"}</button>`).join("")}<button type="button" data-del="1">Delete</button></div></article>`; }).join("");
   renderHitLine();
 }
@@ -667,11 +673,40 @@ $("#logList").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return; const id = b.closest("[data-id]").dataset.id;
   if (b.dataset.del) delLog(id); else if (b.dataset.o) { const l = log.find(x => x.id === id); setOutcome(id, l && l.outcome === b.dataset.o ? null : b.dataset.o); }
 });
+/* ---------- trade tracker ---------- */
+const track = {}; let tracking = false;
+async function checkTrades(manual) {
+  const msg = $("#trkMsg"), open = log.filter(l => l && l.entered && !l.outcome && PAIRS[l.pair]);
+  if (!open.length) { if (manual && msg) msg.textContent = "No open trades to check. Tap \"I entered this trade\" on a trade plan to start one."; return; }
+  if (tracking) return; tracking = true; if (msg) { msg.className = "status"; msg.textContent = "Checking your open trades against the price…"; }
+  let changed = false, fails = 0;
+  for (const k of [...new Set(open.map(l => l.pair))]) {
+    const mine = open.filter(l => l.pair === k), oldest = Math.min(...mine.map(l => l.enteredAt || l.ts)), size = Math.min(500, Math.max(30, Math.ceil((Date.now() - oldest) / 900000) + 8));
+    let rows; try { rows = (await api(`/api/series?symbol=${encodeURIComponent(PAIRS[k].sym)}&interval=15min&size=${size}&tz=UTC`)).rows; } catch (e) { fails++; if (e.locked) showUnlock(); continue; }
+    const cs = rows.map(r => ({ ms: Date.parse(String(r.t).replace(" ", "T") + "Z"), h: r.h, l: r.l, c: r.c })).filter(c => Number.isFinite(c.ms)), last = cs[cs.length - 1];
+    if (!last) { fails++; continue; }
+    for (const l of mine) {
+      const t0 = l.enteredAt || l.ts, buy = l.dir === "BUY", entry = +l.entry, sl = +l.sl, tp = +l.tp1, dist = Math.abs(entry - sl) || 1e-9;
+      if (t0 < cs[0].ms - 900000) { l.note = "Older than the 5 days of price data I can check. Mark it won or lost yourself."; continue; }
+      let hit = null;
+      for (const c of cs) { if (c.ms <= t0) continue; const s1 = buy ? c.l <= sl : c.h >= sl, t1 = buy ? c.h >= tp : c.l <= tp; if (s1 || t1) { hit = { win: t1 && !s1, both: s1 && t1, ms: c.ms }; break; } }
+      if (hit) { l.outcome = hit.win ? "win" : "loss"; l.auto = true; l.closedAt = hit.ms; changed = true; delete track[l.id];
+        l.note = (hit.win ? "Target 1 hit" : "Stop hit") + " around " + new Date(hit.ms).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" }) + (hit.both ? ". Stop and target were both touched in one 15-minute candle, so it is counted as a loss to be safe." : "."); }
+      else { track[l.id] = { price: last.c, r: (buy ? last.c - entry : entry - last.c) / dist, at: last.ms }; if ((Date.now() - t0) > 72 * 3600000) l.note = "Open for over 3 days. Mark it yourself if you already closed it."; }
+    }
+  }
+  if (changed) { try { await persist(); } catch {} }
+  tracking = false; renderLog();
+  if (msg) { msg.className = fails ? "status err" : "status"; msg.textContent = fails ? "Could not read the price for some trades. Try again in a minute." : changed ? "A trade was just resolved." : "Open trades checked. Still running."; }
+}
+$("#chkBtn").onclick = () => checkTrades(true);
+setInterval(() => { if (!document.hidden && log.some(l => l && l.entered && !l.outcome)) checkTrades(); }, 300000);
+
 async function initStore() {
   useServer = !!(status.keys && status.keys.upstash);
   if (useServer) { try { log = (await api("/api/log")).log || []; } catch (e) { if (e.locked) return; useServer = false; } }
   if (!useServer) { log = store.get("c2.log", []); localMode = true; }
-  renderLog();
+  renderLog(); checkTrades();
 }
 /* ---------- assistant ---------- */
 const turns = []; let ctl = null;
@@ -885,7 +920,7 @@ function renderAuto() {
     twoTap($("#tkSend"), async () => {
       const { v, blocked } = upd(); if (blocked) return; const m = $("#tkMsg"); m.className = "status"; m.textContent = "Sending…"; $("#tkSend").disabled = true;
       try { const r = await api("/api/trade/order", { method: "POST", body: JSON.stringify({ pair, side: A.verdict, volume: v, sl: A.plan.sl, tp: A.plan[tpSel] }) });
-        m.textContent = `Sent: ${r.side} ${r.volume} ${r.symbol}.`; try { await addLog(A); } catch {} setTimeout(loadTrade, 1200);
+        m.textContent = `Sent: ${r.side} ${r.volume} ${r.symbol}.`; try { await addLog(A, true); } catch {} setTimeout(loadTrade, 1200);
       } catch (e) { m.className = "status err"; m.textContent = e.message || "The order was not sent."; $("#tkSend").disabled = false; }
     });
     wirePos(); return;
@@ -925,7 +960,7 @@ async function maybeAuto(key) {
   if (A.conv < autoCfg.minConv) return note(`skipped, conviction ${A.conv} is under ${autoCfg.minConv}`);
   if (A.level === "HIGH") return note("skipped, risk is HIGH");
   const t = ticket(A), rr = t && riskAt(A, t.vol); if (!t || rr.pct > autoCfg.maxRisk) return note(`skipped, risk ${rr ? rr.pct.toFixed(1) + "%" : "unknown"} is over the ${autoCfg.maxRisk}% limit`);
-  try { const r = await api("/api/trade/order", { method: "POST", body: JSON.stringify({ pair: key, side: A.verdict, volume: t.vol, sl: A.plan.sl, tp: A.plan.tp1 }) }); note(`sent ${r.side} ${r.volume} lot`); try { await addLog(A); } catch {} tradeInfo = null; loadTrade(); }
+  try { const r = await api("/api/trade/order", { method: "POST", body: JSON.stringify({ pair: key, side: A.verdict, volume: t.vol, sl: A.plan.sl, tp: A.plan.tp1 }) }); note(`sent ${r.side} ${r.volume} lot`); try { await addLog(A, true); } catch {} tradeInfo = null; loadTrade(); }
   catch (e) { note("not sent: " + (e.message || "error")); }
 }
 /* ---------- navigation ---------- */
@@ -935,6 +970,7 @@ function show() {
   const v = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "signal";
   VIEWS.forEach(n => $("#v-" + n).classList.toggle("on", n === v));
   if (v === "events" && !calData) loadCal(); else if (v === "events") renderCal();
+  if (v === "log") checkTrades();
   if (v === "auto") { if (!tradeInfo) loadTrade(); else renderAuto(); }
   document.querySelectorAll(".tab").forEach(t => t.toggleAttribute("aria-current", false) || (t.dataset.v === v ? t.setAttribute("aria-current", "page") : t.removeAttribute("aria-current")));
 }
