@@ -137,29 +137,32 @@ async function llm(messages, { json = false, maxTokens = 1200, search = false, m
     if (j.error) throw new Error(String(j.error.message || "Anthropic error").slice(0, 200));
     return (j.content || []).map(b => b.text || "").join("");
   }
-  const model = await geminiModel();
-  const body = { contents: messages.map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })), generationConfig: { maxOutputTokens: Math.max(maxTokens, 2048), temperature: 0.4 } };
-  if (json && !search) body.generationConfig.responseMimeType = "application/json";
-  if (search) { body.tools = [{ google_search: {} }]; body.generationConfig.maxOutputTokens = Math.max(maxTokens, 4096); }
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
-  let j = await getJson(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-  if (search && j.error && !/quota|rate|exhaust/i.test(j.error.message || "")) {
-    delete body.tools; if (json) body.generationConfig.responseMimeType = "application/json";
-    j = await getJson(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-    if (meta) meta.searchFailed = true;
-  } else if (search && j.error) {
-    delete body.tools; if (json) body.generationConfig.responseMimeType = "application/json";
-    j = await getJson(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-    if (meta) meta.searchFailed = true;
+  const first = await geminiModel(), models = [...new Set([first, "gemini-2.5-flash", "gemini-2.5-flash-lite"])];
+  const base = { contents: messages.map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })), generationConfig: { maxOutputTokens: Math.max(maxTokens, 2048), temperature: 0.4 } };
+  const post = (model, body) => getJson(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  let lastMsg = "", quota = false;
+  for (const model of models) {
+    let j = null, searched = false;
+    if (search) {
+      const body = JSON.parse(JSON.stringify(base)); body.tools = [{ google_search: {} }]; body.generationConfig.maxOutputTokens = Math.max(maxTokens, 4096);
+      try { j = await post(model, body); searched = !j.error; } catch (e) { lastMsg = e.message; }
+    }
+    if (!j || j.error) {
+      const body = JSON.parse(JSON.stringify(base)); if (json) body.generationConfig.responseMimeType = "application/json";
+      try { j = await post(model, body); } catch (e) { lastMsg = e.message; j = null; }
+      if (search && meta) meta.searchFailed = true;
+    }
+    if (!j) continue;
+    if (j.error) { lastMsg = String(j.error.message || "AI error"); if (/quota|rate|exhaust/i.test(lastMsg)) quota = true; await new Promise(r => setTimeout(r, 800)); continue; }
+    const cand = (j.candidates || [])[0], text = ((cand && cand.content && cand.content.parts) || []).map(p => p.text || "").join("");
+    if (!text) { lastMsg = "The AI returned no text"; continue; }
+    if (meta && searched) {
+      const seen = new Set(); meta.sources = [];
+      for (const c of ((cand.groundingMetadata || {}).groundingChunks || [])) { const w = c.web; if (w && w.uri && !seen.has(w.uri) && meta.sources.length < 5) { seen.add(w.uri); meta.sources.push({ title: String(w.title || w.uri).slice(0, 80), url: w.uri }); } }
+    }
+    return text;
   }
-  if (meta && !meta.searchFailed) {
-    const seen = new Set(); meta.sources = [];
-    for (const c of ((j.candidates || [])[0]?.groundingMetadata?.groundingChunks || [])) { const w = c.web; if (w && w.uri && !seen.has(w.uri) && meta.sources.length < 5) { seen.add(w.uri); meta.sources.push({ title: String(w.title || w.uri).slice(0, 80), url: w.uri }); } }
-  }
-  if (j.error) throw new Error(/quota|rate|exhaust/i.test(j.error.message || "") ? "The free AI limit was reached. Wait a minute and try again." : String(j.error.message || "AI error").slice(0, 200));
-  const text = ((j.candidates || [])[0]?.content?.parts || []).map(p => p.text || "").join("");
-  if (!text) throw new Error("The AI returned no text");
-  return text;
+  throw new Error(quota ? "The free AI limit was reached. Wait a minute and try again." : /high demand|overload|unavailable/i.test(lastMsg) ? "Google's free AI is busy right now. Wait a minute and tap again." : String(lastMsg || "AI error").slice(0, 200));
 }
 function parseLoose(t) {
   try { return JSON.parse(t); } catch {}
@@ -221,6 +224,31 @@ async function fetchFF() {
   if (!events.length) throw new Error("Calendar feed returned no events");
   return events;
 }
+
+/* US release dates from FRED (dates only; Analyse finds forecasts) */
+const FRED_REL = [
+  [/Consumer Price Index/i, "CPI m/m", "High", [8, 30]], [/^Employment Situation/i, "Non-Farm Employment Change", "High", [8, 30]],
+  [/Gross Domestic Product/i, "GDP q/q", "High", [8, 30]], [/Producer Price Index/i, "PPI m/m", "Medium", [8, 30]],
+  [/Advance Monthly Sales for Retail/i, "Retail Sales m/m", "High", [8, 30]], [/Unemployment Insurance Weekly Claims/i, "Unemployment Claims", "Medium", [8, 30]],
+  [/Personal Income and Outlays/i, "Core PCE Price Index m/m", "High", [8, 30]], [/FOMC Press Release/i, "FOMC Rate Decision", "High", [14, 0]]
+];
+function nyToUtc(ymd, h, m) {
+  const [Y, M, D] = ymd.split("-").map(Number), fmt = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", hourCycle: "h23" });
+  for (const off of [4, 5]) { const t = Date.UTC(Y, M - 1, D, h + off, m); if (+fmt.format(t) === h) return t; }
+  return Date.UTC(Y, M - 1, D, h + 5, m);
+}
+async function fredCalendar() {
+  const today = new Date().toISOString().slice(0, 10);
+  const j = await getJson(`https://api.stlouisfed.org/fred/releases/dates?api_key=${need("FRED_KEY")}&file_type=json&realtime_start=${today}&realtime_end=9999-12-31&include_release_dates_with_no_data=true&sort_order=asc&limit=400`);
+  const out = [];
+  for (const r of (j.release_dates || [])) {
+    const rule = FRED_REL.find(x => x[0].test(r.release_name || "")); if (!rule || !/^\d{4}-\d{2}-\d{2}$/.test(r.date)) continue;
+    const t = nyToUtc(r.date, rule[3][0], rule[3][1]);
+    if (t > Date.now() - 3 * 3600000 && t < Date.now() + 10 * 86400000) out.push({ title: rule[1], cur: "USD", t, impact: rule[2], forecast: "", previous: "" });
+  }
+  if (!out.length) throw new Error("FRED returned no release dates");
+  return out.sort((a, b) => a.t - b.t);
+}
 async function aiCalendar() {
   const now = new Date(), prompt = `You are an economic calendar researcher. Today is ${now.toUTCString()}.
 Search the web for the high and medium impact economic events scheduled from now until 7 days ahead for the United States (USD), United Kingdom (GBP) and Japan (JPY). Include inflation (CPI, PPI), jobs (payrolls, unemployment, jobless claims), central bank rate decisions and speeches (Fed, BOE, BOJ), GDP, retail sales and PMIs. Use the official or consensus release times.
@@ -232,7 +260,7 @@ Reply with only a JSON array, no markdown. Each item: {"title":"","country":"USD
 }
 async function calendar() {
   const now = Date.now();
-  if (calMem && now - calMem.fetched < (calMem.source === "feed" ? 6 : 3) * 3600000 && calMem.events.some(x => x.t > now - 3 * 3600000)) return calMem;
+  if (calMem && now - calMem.fetched < (calMem.source === "feed" ? 6 : calMem.source === "fred" ? 6 : 1) * 3600000 && calMem.events.some(x => x.t > now - 3 * 3600000)) return calMem;
   let why = "";
   if (now - calFFFail > 15 * 60000) {
     try { const events = await fetchFF(); calMem = { events, fetched: now, source: "feed", stale: false }; if (E.UPSTASH_URL && E.UPSTASH_TOKEN) upstash(["SET", "chloe2:cal", JSON.stringify(calMem)]).catch(() => {}); return calMem; }
@@ -240,6 +268,9 @@ async function calendar() {
   }
   if (E.UPSTASH_URL && E.UPSTASH_TOKEN) {
     try { const r = await upstash(["GET", "chloe2:cal"]); const c = r ? JSON.parse(r) : null; if (c && c.events && now - c.fetched < 4 * 86400000 && c.events.some(x => x.t > now)) return Object.assign({}, c, { stale: true }); } catch {}
+  }
+  if (E.FRED_KEY) {
+    try { const events = await fredCalendar(); calMem = { events, fetched: now, source: "fred", stale: false }; return calMem; } catch (e) { why += (why ? "; " : "") + "FRED: " + e.message; }
   }
   if (E.LLM_KEY) {
     try { const events = await aiCalendar(); calMem = { events, fetched: now, source: "ai", stale: false }; return calMem; } catch (e) { why += (why ? "; " : "") + e.message; }
@@ -350,4 +381,3 @@ http.createServer(async (req, res) => {
     send(res, 502, { error: String(e && e.message || e).slice(0, 240) });
   }
 }).listen(PORT, () => console.log("Chloe 2 listening on " + PORT));
-
