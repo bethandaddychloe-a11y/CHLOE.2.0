@@ -277,4 +277,77 @@ async function placeOrder(b) {
   if (b.pair === "NASDAQ") throw new Error("Nasdaq has no lot sizing yet, so it is switched off for auto trading");
   if (!["BUY", "SELL"].includes(side)) throw new Error("Side must be BUY or SELL");
   if (!(vol >= 0.01)) throw new Error("Lot must be at least 0.01");
-  if (vol > MAX_LOT) throw new Error(`Lot ${vol} is above the server cap of ${
+  if (vol > MAX_LOT) throw new Error(`Lot ${vol} is above the server cap of ${MAX_LOT}. Raise MAX_LOT in Render if you really want that.`);
+  if (!(sl > 0) || !(tp > 0) || sl === tp) throw new Error("A stop loss and a take profit are required");
+  const key = b.pair + side, last = recent.get(key);
+  if (last && Date.now() - last < 15000) throw new Error("That order was just sent. Wait a few seconds.");
+  recent.set(key, Date.now());
+  const pos = await mt("/positions");
+  const list = Array.isArray(pos) ? pos : [];
+  if (list.length >= MAX_POS) throw new Error(`Already ${list.length} open trades (limit ${MAX_POS}).`);
+  if (list.some(p => p.symbol === symbol)) throw new Error(`You already have an open ${symbol} trade.`);
+  const r = await mt("/trade", { actionType: side === "BUY" ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol, volume: vol, stopLoss: +sl.toFixed(5), takeProfit: +tp.toFixed(5), comment: "Chloe2" });
+  if (!tradeOk(r)) throw new Error(String(r && (r.message || r.stringCode) || "Broker refused the order").slice(0, 200));
+  return { ok: true, symbol, side, volume: vol, orderId: r.orderId, positionId: r.positionId, message: r.message };
+}
+async function closePosition(id) {
+  const r = await mt("/trade", { actionType: "POSITION_CLOSE_ID", positionId: String(id) });
+  if (!tradeOk(r)) throw new Error(String(r && (r.message || r.stringCode) || "Broker refused the close").slice(0, 200));
+  return { ok: true };
+}
+
+/* ---------- routes ---------- */
+async function api(req, res, u) {
+  const p = u.pathname, q = u.searchParams;
+  if (p === "/api/status") {
+    return send(res, 200, { locked: !!E.ACCESS_KEY, keys: { twelve: !!E.TWELVE_KEY, fred: !!E.FRED_KEY, finnhub: !!E.FINNHUB_KEY, av: !!E.AV_KEY, llm: !!E.LLM_KEY, upstash: !!(E.UPSTASH_URL && E.UPSTASH_TOKEN), trade: mtReady() }, provider: (E.LLM_PROVIDER || "gemini").toLowerCase() });
+  }
+  if (E.ACCESS_KEY && !same(req.headers["x-access"] || "", E.ACCESS_KEY)) return send(res, 401, { error: "locked" });
+  if (p === "/api/ping") return send(res, 200, { ok: true });
+  if (p === "/api/series") return send(res, 200, { rows: await series(q.get("symbol"), q.get("interval"), q.get("size")) });
+  if (p === "/api/macro") return send(res, 200, await macro());
+  if (p === "/api/cot") return send(res, 200, await cot(q.get("pair")));
+  if (p === "/api/options") return send(res, 200, await options(q.get("symbol")));
+  if (p === "/api/sentiment") return send(res, 200, await sentiment(q.get("pair")));
+  if (p === "/api/calendar") return send(res, 200, await calendar());
+  if (p === "/api/trade/status") return send(res, 200, await tradeStatus());
+  if (p === "/api/trade/order" && req.method === "POST") return send(res, 200, await placeOrder(await readBody(req)));
+  if (p === "/api/trade/close" && req.method === "POST") { const b = await readBody(req); if (!b.id) throw new Error("No position id"); return send(res, 200, await closePosition(b.id)); }
+  if (p === "/api/trade/closeall" && req.method === "POST") {
+    const pos = await mt("/positions"); let n = 0, fail = 0;
+    for (const x of (Array.isArray(pos) ? pos : [])) { try { await closePosition(x.id); n++; } catch { fail++; } }
+    return send(res, 200, { ok: fail === 0, closed: n, failed: fail });
+  }
+  if (p === "/api/llm" && req.method === "POST") {
+    const b = await readBody(req), m = b.messages;
+    if (!Array.isArray(m) || !m.length || m.length > 24 || m.some(x => !x || !["user", "assistant"].includes(x.role) || typeof x.content !== "string" || x.content.length > 14000)) throw new Error("Bad messages");
+    const meta = {}, text = await llm(m, { json: !!b.json, maxTokens: Math.min(+b.maxTokens || 1200, 3000), search: !!b.search, meta });
+    return send(res, 200, { text, sources: meta.sources || [], searched: !!b.search && !meta.searchFailed });
+  }
+  if (p === "/api/log") {
+    if (req.method === "GET") { const r = await upstash(["GET", "chloe2:log"]); let log = []; try { log = r ? JSON.parse(r) : []; } catch {} return send(res, 200, { log }); }
+    if (req.method === "PUT") { const b = await readBody(req, 400000); if (!Array.isArray(b.log)) throw new Error("Bad log"); await upstash(["SET", "chloe2:log", JSON.stringify(b.log.slice(0, 300))]); return send(res, 200, { ok: true }); }
+  }
+  return send(res, 404, { error: "Not found" });
+}
+
+function serveStatic(res, p) {
+  if (p !== "/" && p !== "/index.html") return send(res, 404, "Not found", "text/plain");
+  fs.readFile(path.join(__dirname, "index.html"), (err, data) => {
+    if (err) return send(res, 404, "index.html is missing from the repo", "text/plain");
+    res.writeHead(200, { "content-type": MIME[".html"], "cache-control": "no-cache" });
+    res.end(data);
+  });
+}
+
+http.createServer(async (req, res) => {
+  const u = new URL(req.url, "http://localhost");
+  try {
+    if (u.pathname === "/health") return send(res, 200, "ok", "text/plain");
+    if (u.pathname.startsWith("/api/")) return await api(req, res, u);
+    return serveStatic(res, u.pathname);
+  } catch (e) {
+    send(res, 502, { error: String(e && e.message || e).slice(0, 240) });
+  }
+}).listen(PORT, () => console.log("Chloe 2 listening on " + PORT));
+
