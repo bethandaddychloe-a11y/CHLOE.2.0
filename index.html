@@ -747,7 +747,7 @@ async function loadCal() {
   const st = $("#calStatus"); st.className = "status"; st.textContent = "Loading the calendar…";
   try {
     calData = await api("/api/calendar"); renderCal();
-    st.textContent = calData.stale ? "The feed is not answering, so this is the last saved calendar." : "";
+    st.textContent = calData.source === "ai" ? "The free calendar feed is busy, so Chloe 2 built this list with an AI web search. Check times and forecasts before you trade." : calData.stale ? "The feed is not answering, so this is the last saved calendar." : "";
   } catch (e) { st.className = "status err"; st.textContent = e.locked ? "Enter your access code first." : (e.message || "Could not load the calendar."); if (e.locked) showUnlock(); }
 }
 function renderCal() {
@@ -961,4 +961,3 @@ $("#unlockBtn").onclick = async () => {
 </script>
 </body>
 </html>
-
