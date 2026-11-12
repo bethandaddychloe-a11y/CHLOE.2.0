@@ -116,18 +116,20 @@ function options(symbol) {
 
 /* ---------- AI model (Gemini free tier by default, or Anthropic) ---------- */
 let geminiPick = null;
-async function geminiModel() {
-  if (E.LLM_MODEL) return E.LLM_MODEL;
-  if (geminiPick && Date.now() - geminiPick.at < 86400000) return geminiPick.name;
-  let name = "gemini-2.5-flash";
+async function geminiModels() {
+  if (geminiPick && Date.now() - geminiPick.at < 6 * 3600000) return geminiPick.list;
+  let list = [];
   try {
     const j = await getJson(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${need("LLM_KEY")}`);
-    const best = (j.models || []).filter(m => (m.supportedGenerationMethods || []).includes("generateContent") && /\/gemini-[\d.]+-flash$/.test(m.name))
-      .map(m => ({ n: m.name.replace("models/", ""), v: parseFloat(m.name.match(/gemini-([\d.]+)-flash/)[1]) })).sort((a, b) => b.v - a.v)[0];
-    if (best) name = best.n;
+    const ok = (j.models || []).filter(m => (m.supportedGenerationMethods || []).includes("generateContent")).map(m => m.name.replace("models/", ""));
+    const ver = n => parseFloat((n.match(/gemini-([\d.]+)-flash/) || [0, 0])[1]);
+    const full = ok.filter(n => /^gemini-[\d.]+-flash$/.test(n)).sort((a, b) => ver(b) - ver(a)).slice(0, 3);
+    const lite = ok.filter(n => /^gemini-[\d.]+-flash-lite$/.test(n)).sort((a, b) => ver(b) - ver(a)).slice(0, 2);
+    list = [...full, ...lite];
   } catch {}
-  geminiPick = { at: Date.now(), name };
-  return name;
+  if (!list.length) list = ["gemini-2.5-flash"];
+  geminiPick = { at: Date.now(), list };
+  return list;
 }
 async function llm(messages, { json = false, maxTokens = 1200, search = false, meta = null } = {}) {
   const key = need("LLM_KEY"), prov = (E.LLM_PROVIDER || "gemini").toLowerCase();
@@ -137,9 +139,15 @@ async function llm(messages, { json = false, maxTokens = 1200, search = false, m
     if (j.error) throw new Error(String(j.error.message || "Anthropic error").slice(0, 200));
     return (j.content || []).map(b => b.text || "").join("");
   }
-  const first = await geminiModel(), models = [...new Set([first, "gemini-2.5-flash", "gemini-2.5-flash-lite"])];
+  const models = [...new Set([...(E.LLM_MODEL ? [E.LLM_MODEL] : []), ...(await geminiModels())])];
   const base = { contents: messages.map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })), generationConfig: { maxOutputTokens: Math.max(maxTokens, 2048), temperature: 0.4 } };
-  const post = (model, body) => getJson(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const rawPost = body => model => getJson(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const post = async (model, body) => {
+    /* switch off the slow "thinking" step where the model allows it; fall back if the model rejects the setting */
+    const fast = JSON.parse(JSON.stringify(body)); fast.generationConfig.thinkingConfig = /gemini-2\.5/.test(model) ? { thinkingBudget: 0 } : { thinkingLevel: "minimal" };
+    try { const j = await rawPost(fast)(model); if (!(j.error && /thinking|invalid|unknown name/i.test(j.error.message || ""))) return j; } catch {}
+    return rawPost(body)(model);
+  };
   let lastMsg = "", quota = false;
   for (const model of models) {
     let j = null, searched = false;
@@ -153,7 +161,7 @@ async function llm(messages, { json = false, maxTokens = 1200, search = false, m
       if (search && meta) meta.searchFailed = true;
     }
     if (!j) continue;
-    if (j.error) { lastMsg = String(j.error.message || "AI error"); if (/quota|rate|exhaust/i.test(lastMsg)) quota = true; await new Promise(r => setTimeout(r, 800)); continue; }
+    if (j.error) { const em = String(j.error.message || "AI error"); if (!/no longer available|not found|not supported/i.test(em) || !lastMsg) lastMsg = em; if (/quota|rate|exhaust/i.test(lastMsg)) quota = true; await new Promise(r => setTimeout(r, 800)); continue; }
     const cand = (j.candidates || [])[0], text = ((cand && cand.content && cand.content.parts) || []).map(p => p.text || "").join("");
     if (!text) { lastMsg = "The AI returned no text"; continue; }
     if (meta && searched) {
