@@ -49,11 +49,11 @@ function readBody(req, limit = 200000) {
 /* ---------- candles: Twelve Data ---------- */
 const SYMBOLS = new Set(["XAU/USD", "USD/JPY", "GBP/USD", "BTC/USD", "QQQ", "UUP"]);
 const INTERVALS = new Set(["15min", "1h", "4h", "1day"]);
-function series(symbol, interval, size) {
+function series(symbol, interval, size, tz) {
   if (!SYMBOLS.has(symbol) || !INTERVALS.has(interval)) throw new Error("Unsupported symbol or interval");
-  size = Math.min(Math.max(+size || 100, 30), 300);
-  return cached(`s|${symbol}|${interval}|${size}`, 300000, async () => {
-    const j = await getJson(`https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=${interval}&outputsize=${size}&apikey=${need("TWELVE_KEY")}`);
+  size = Math.min(Math.max(+size || 100, 30), 500); const utc = tz === "UTC";
+  return cached(`s|${symbol}|${interval}|${size}|${utc ? "u" : ""}`, 300000, async () => {
+    const j = await getJson(`https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=${interval}&outputsize=${size}${utc ? "&timezone=UTC" : ""}&apikey=${need("TWELVE_KEY")}`);
     if (j.status === "error" || !Array.isArray(j.values)) throw new Error(String(j.message || "Twelve Data returned no candles").slice(0, 160));
     return j.values.map(r => ({ t: r.datetime, o: +r.open, h: +r.high, l: +r.low, c: +r.close })).filter(x => [x.o, x.h, x.l, x.c].every(Number.isFinite)).reverse();
   });
@@ -343,7 +343,7 @@ async function api(req, res, u) {
   }
   if (E.ACCESS_KEY && !same(req.headers["x-access"] || "", E.ACCESS_KEY)) return send(res, 401, { error: "locked" });
   if (p === "/api/ping") return send(res, 200, { ok: true });
-  if (p === "/api/series") return send(res, 200, { rows: await series(q.get("symbol"), q.get("interval"), q.get("size")) });
+  if (p === "/api/series") return send(res, 200, { rows: await series(q.get("symbol"), q.get("interval"), q.get("size"), q.get("tz")) });
   if (p === "/api/macro") return send(res, 200, await macro());
   if (p === "/api/cot") return send(res, 200, await cot(q.get("pair")));
   if (p === "/api/options") return send(res, 200, await options(q.get("symbol")));
