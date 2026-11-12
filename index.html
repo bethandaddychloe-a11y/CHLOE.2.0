@@ -3,36 +3,37 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0e1116">
+<meta name="theme-color" content="#f6e0e1">
 <title>Chloe 2</title>
+<script>try{var t=JSON.parse(localStorage.getItem("c2.theme")||"null");if(t&&t!=="rose")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
 
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
 [hidden]{display:none!important}
 html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-/* Layout: one phone-width column, sticky pair switcher on top, four tabs on the bottom.
-   Dark ink ground, brass accent for the brand, separate green/red for buy/sell. */
+/* Layout: one phone-width column, sticky pair switcher on top, five tabs on the bottom.
+   Rose gold palette. Buy stays green and sell stays red. */
 :root{
-  --bg:#0e1116; --surface:#161b22; --surface-2:#1d242d; --line:#2a323d;
-  --fg:#e8e6df; --muted:#8d97a5; --accent:#d9a441; --accent-ink:#1a1405;
-  --buy:#3fb58a; --sell:#ef6a5a; --warn:#e0a93b; --wait:#8d97a5;
+  --bg:#f6e0e1; --surface:#fcefee; --surface-2:#f1d3d5; --line:#e0b8bb;
+  --fg:#3a2226; --muted:#7a565c; --accent:#a24a5f; --accent-ink:#ffffff;
+  --buy:#0f7a58; --sell:#b3281b; --warn:#8f5f00; --wait:#7a565c;
   --font-display:'Bricolage Grotesque','Segoe UI',system-ui,sans-serif;
   --font-body:'IBM Plex Sans','Segoe UI',system-ui,sans-serif;
   --font-mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
-  color-scheme:dark;
+  color-scheme:light;
 }
-@media (prefers-color-scheme: light){
-  :root:not([data-theme="dark"]){
-    --bg:#eef0f3; --surface:#ffffff; --surface-2:#e6e9ee; --line:#d3d9e1;
-    --fg:#14181f; --muted:#5b6674; --accent:#8a5d00; --accent-ink:#ffffff;
-    --buy:#0f7a58; --sell:#c2392a; --warn:#8f5f00; --wait:#5b6674; color-scheme:light;
-  }
-}
-:root[data-theme="light"]{
-  --bg:#eef0f3; --surface:#ffffff; --surface-2:#e6e9ee; --line:#d3d9e1;
-  --fg:#14181f; --muted:#5b6674; --accent:#8a5d00; --accent-ink:#ffffff;
-  --buy:#0f7a58; --sell:#c2392a; --warn:#8f5f00; --wait:#5b6674; color-scheme:light;
-}
+:root[data-theme="gold"]{--bg:#0e0b07; --surface:#17120b; --surface-2:#211a10; --line:#3a2e1a; --fg:#f1e6d0; --muted:#a39478; --accent:#d9a441; --accent-ink:#1a1405; --buy:#3fb58a; --sell:#ef6a5a; --warn:#e0a93b; --wait:#a39478; color-scheme:dark}
+:root[data-theme="blue"]{--bg:#070e1c; --surface:#0e1a30; --surface-2:#152642; --line:#24406b; --fg:#e6eefc; --muted:#8fa3c4; --accent:#4c9bff; --accent-ink:#04101f; --buy:#3fb58a; --sell:#ef6a5a; --warn:#e0a93b; --wait:#8fa3c4; color-scheme:dark}
+:root[data-theme="purple"]{--bg:#0f0a1c; --surface:#1a1230; --surface-2:#251a45; --line:#43306e; --fg:#efe8ff; --muted:#a898cc; --accent:#b278ff; --accent-ink:#12041f; --buy:#3fb58a; --sell:#ef6a5a; --warn:#e0a93b; --wait:#a898cc; color-scheme:dark}
+:root[data-theme="light"]{--bg:#f6f1e6; --surface:#fffdf8; --surface-2:#efe6d2; --line:#dccfb3; --fg:#2a2418; --muted:#7a6f58; --accent:#9a6b12; --accent-ink:#ffffff; --buy:#0f7a58; --sell:#b3281b; --warn:#8f5f00; --wait:#7a6f58; color-scheme:light}
+:root[data-theme="green"]{--bg:#06140f; --surface:#0c2119; --surface-2:#133524; --line:#25563d; --fg:#e4f5ec; --muted:#8fb5a2; --accent:#e0b85a; --accent-ink:#1a1405; --buy:#4ade80; --sell:#ef6a5a; --warn:#e0a93b; --wait:#8fb5a2; color-scheme:dark}
+.top-right{display:flex;align-items:center;gap:10px}
+.themeBtn{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--surface);cursor:pointer;display:grid;place-items:center;padding:0}
+.themeBtn i{width:18px;height:18px;border-radius:50%;background:conic-gradient(var(--accent) 0 33%,var(--buy) 0 66%,var(--sell) 0);display:block}
+.themeRow{display:flex;gap:8px;overflow-x:auto;padding-top:9px;scrollbar-width:none}
+.themeRow button{flex:none;display:flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--surface);border-radius:20px;padding:5px 12px 5px 6px;cursor:pointer;font-size:12.5px}
+.themeRow button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
+.themeRow .sw{width:20px;height:20px;border-radius:50%;border:1px solid rgba(128,128,128,.5);display:block}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:15px;line-height:1.5;margin:0}
@@ -217,8 +218,9 @@ details.more summary{cursor:pointer;font-size:13px;color:var(--accent)}
   <header class="top gut"><div class="col">
     <div class="top-row">
       <div class="brand"><span class="mark" aria-hidden="true"></span><span class="wordmark">Chloe<em>2</em></span></div>
-      <div class="conn" id="conn"><span class="dot"></span><span id="connText">Starting…</span></div>
+      <div class="top-right"><div class="conn" id="conn"><span class="dot"></span><span id="connText">Starting…</span></div><button class="themeBtn" id="themeBtn" type="button" aria-label="Change colours" aria-expanded="false"><i></i></button></div>
     </div>
+    <div class="themeRow" id="themeRow" hidden role="group" aria-label="Colour theme"></div>
     <nav class="pairs" id="pairs" aria-label="Instrument"></nav>
   </div></header>
 
@@ -241,7 +243,8 @@ details.more summary{cursor:pointer;font-size:13px;color:var(--accent)}
     <!-- EVENTS -->
     <section class="view" id="v-events" aria-label="News events">
       <div class="sec-head" style="margin-bottom:6px"><h2 class="h-sec">Upcoming news</h2><button class="btn small" id="calReload" type="button">Refresh</button></div>
-      <p class="note" style="margin-bottom:10px">High and medium impact news for USD, GBP and JPY. Tap Analyse and Chloe 2 researches the event on the web by itself, then gives BUY, SELL or WAIT for each pair.</p>
+      <p class="note" style="margin-bottom:10px">High and medium impact news for USD, GBP and JPY. Tap Analyse and Chloe 2 researches the event by itself, then gives BUY, SELL or WAIT for each pair. Quick mode takes a few seconds; Deep mode searches the web and is slower.</p>
+      <label class="check" style="margin-bottom:10px"><input type="checkbox" id="deepOn"> Deep web research (slower, up to a minute)</label>
       <div id="calList"></div>
       <p class="status" id="calStatus" role="status"></p>
       <p class="foot">The odds are an AI estimate from web research, not a data feed. Prices spike both ways in the first minutes after a release, so read the call as the lean for the move after the spike. The calendar comes from a free weekly feed, so check the forecast before you trade it.</p>
@@ -784,27 +787,31 @@ function resultHTML(x, r, meta) {
     ${dr.length ? `<ul class="drivers">${dr.map(d => `<li>${esc(d)}</li>`).join("")}</ul>` : ""}
     <div><div class="sec-head"><h3 class="h-sec" style="font-size:15px">Verdict</h3><span class="note">after the release</span></div><div class="calls" style="margin-top:8px">${calls}</div></div>
     <details class="more"><summary>Every scenario</summary>${scen}</details>
-    <p class="srcs">${src ? "Sources: " + src : meta.searched === false ? "Web search was not available, so this uses the AI's own knowledge and your live macro data only." : ""}</p>
+    <p class="srcs">${src ? "Sources: " + src : meta.quick ? "Quick mode: built from your live macro data and recent headlines. Tick Deep web research for a full web search." : meta.searched === false ? "Web search was not available, so this uses the AI's own knowledge and your live macro data only." : ""}</p>
   </div>`;
 }
 async function analyseEvent(i) {
   const x = calShown[i]; if (!x) return; const k = evKey(x);
   calCache[k] = { loading: true, html: `<p class="status">Researching ${esc(x.title)} on the web…</p>` }; renderCal();
+  const deep = $("#deepOn").checked; store.set("c2.deep", deep);
+  let heads = ""; if (!deep) { try { const sj = await api("/api/sentiment?pair=XAUUSD"); heads = (sj.headlines || []).slice(0, 8).map(q => "- " + q.t).join("\n"); } catch {} }
   const list = Object.keys(PAIRS).map(q => `${q} (${PAIRS[q].sub})`).join(", ");
   const prompt = `You are a macro research analyst. Today is ${new Date().toUTCString()}.
 Event: ${x.cur} ${x.title}, impact ${x.impact}, scheduled ${new Date(x.t).toUTCString()}. Calendar feed forecast: ${x.forecast || "none"}. Previous: ${x.previous || "none"}.
 Latest US macro readings from live data: ${macSummary()}.
-First, search the web for: the consensus forecast for this event, the last three releases and whether they beat or missed, what the central bank has said recently, and any current news (wars, markets, oil, big companies) that could change how markets react. Then estimate the chance the actual figure comes in below, in line with, or above the forecast (integers summing to 100), and how each pair usually reacts in each case: ${list}. Be honest that this is an estimate. Keep every "why" under 16 words.
+${deep ? "First, search the web for: the consensus forecast for this event, the last three releases and whether they beat or missed, what the central bank has said recently, and any current news (wars, markets, oil, big companies) that could change how markets react." : "Use the live macro readings above, these recent market headlines, and what you know about the last releases and the central bank:\n" + (heads || "(no headlines available)")} Then estimate the chance the actual figure comes in below, in line with, or above the forecast (integers summing to 100), and how each pair usually reacts in each case: ${list}. Be honest that this is an estimate. Keep every "why" under 16 words.
 Reply with only JSON, no markdown: {"forecast":"","previous":"","odds":{"below":0,"match":0,"above":0},"summary":"one or two sentences","drivers":["up to 4 short findings from your research"],"reactions":{"XAUUSD":{"below":{"dir":"BUY|SELL|CHOP","why":""},"match":{"dir":"","why":""},"above":{"dir":"","why":""}}}} with an entry for each pair key: ${Object.keys(PAIRS).join(", ")}.`;
   try {
-    const j = await api("/api/llm", { method: "POST", body: JSON.stringify({ messages: [{ role: "user", content: prompt }], json: true, search: true, maxTokens: 3500 }) });
+    const ac = new AbortController(), to = setTimeout(() => ac.abort(), deep ? 100000 : 50000);
+    let j; try { j = await api("/api/llm", { method: "POST", signal: ac.signal, body: JSON.stringify({ messages: [{ role: "user", content: prompt }], json: true, search: deep, maxTokens: 3500 }) }); } finally { clearTimeout(to); }
     const r = parseLoose(j.text); if (!r) throw new Error("The answer came back in the wrong shape. Tap Analyse again.");
-    calCache[k] = { loading: false, html: resultHTML(x, r, j) };
-  } catch (e) { calCache[k] = { loading: false, html: `<p class="status err">${esc(askErr(e))}</p>` }; if (e && e.locked) showUnlock(); }
+    calCache[k] = { loading: false, html: resultHTML(x, r, Object.assign({}, j, { quick: !deep })) };
+  } catch (e) { calCache[k] = { loading: false, html: `<p class="status err">${e && e.name === "AbortError" ? "This took too long. " + (deep ? "Untick Deep web research for a faster answer, or tap Analyse again." : "Tap Analyse again.") : esc(askErr(e))}</p>` }; if (e && e.locked) showUnlock(); }
   renderCal();
   const el = document.querySelector(`.news[data-i="${i}"]`); if (el) el.scrollIntoView({ block: "start", behavior: "smooth" });
 }
 $("#calList").onclick = e => { const b = e.target.closest(".anBtn"); if (!b) return; const a = b.closest(".news"); if (a) analyseEvent(+a.dataset.i); };
+$("#deepOn").checked = !!store.get("c2.deep", false);
 $("#calReload").onclick = () => { calData = null; loadCal(); };
 
 /* ---------- auto trading (MetaApi) ---------- */
@@ -940,8 +947,20 @@ $("#pairs").onclick = e => { const b = e.target.closest(".pair"); if (!b) return
 $("#runBtn").onclick = run;
 $("#evToday").onchange = e => { evToday = e.target.checked; for (const k in raw) results[k] = analyze(k); renderSignal(); };
 
+/* ---------- colour themes ---------- */
+const THEMES = [["rose", "Rose Gold", "#f6e0e1", "#a24a5f"], ["gold", "Black Gold", "#0e0b07", "#d9a441"], ["blue", "Dark Blue", "#070e1c", "#4c9bff"], ["purple", "Purple", "#0f0a1c", "#b278ff"], ["light", "Clean Light", "#f6f1e6", "#9a6b12"], ["green", "Ocean Green", "#06140f", "#4ade80"]];
+let theme = store.get("c2.theme", "rose"); if (!THEMES.some(t => t[0] === theme)) theme = "rose";
+function applyTheme(k) {
+  theme = k; store.set("c2.theme", k);
+  if (k === "rose") document.documentElement.removeAttribute("data-theme"); else document.documentElement.setAttribute("data-theme", k);
+  const t = THEMES.find(x => x[0] === k), m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute("content", t[2]);
+  $("#themeRow").innerHTML = THEMES.map(x => `<button type="button" data-k="${x[0]}" aria-pressed="${x[0] === k}"><span class="sw" style="background:linear-gradient(135deg,${x[2]} 50%,${x[3]} 50%)"></span>${x[1]}</button>`).join("");
+}
+$("#themeBtn").onclick = () => { const r = $("#themeRow"); r.hidden = !r.hidden; $("#themeBtn").setAttribute("aria-expanded", String(!r.hidden)); };
+$("#themeRow").onclick = e => { const b = e.target.closest("button"); if (b) applyTheme(b.dataset.k); };
+
 /* ---------- boot ---------- */
-drawPairs(); show(); renderSignal(); renderLog(); initAssistant();
+applyTheme(theme); drawPairs(); show(); renderSignal(); renderLog(); initAssistant();
 $("#unlockBtn").onclick = async () => {
   const v = $("#unlockIn").value.trim(); if (!v) return;
   store.set("c2.access", v);
