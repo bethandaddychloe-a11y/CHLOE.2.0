@@ -104,12 +104,18 @@ function cot(pair) {
 
 /* ---------- options put/call ratio: Alpha Vantage (optional) ---------- */
 const OPT_SYMBOLS = new Set(["GLD", "QQQ", "IBIT", "UUP"]);
+const SECRETS = ["TWELVE_KEY", "FRED_KEY", "FINNHUB_KEY", "AV_KEY", "LLM_KEY", "UPSTASH_URL", "UPSTASH_TOKEN", "METAAPI_TOKEN", "ACCESS_KEY"];
+function scrub(msg) {
+  let t = String(msg || "");
+  for (const k of SECRETS) { const v = E[k]; if (v && v.length >= 6) t = t.split(v).join("***"); }
+  return t.replace(/(api_?key|token|key)=[^&\s"']+/gi, "$1=***");
+}
 function options(symbol) {
   if (!OPT_SYMBOLS.has(symbol)) throw new Error("Unsupported options symbol");
-  return cached("opt|" + symbol, 900000, async () => {
+  return cached("opt|" + symbol, 6 * 3600000, async () => {
     const j = await getJson(`https://www.alphavantage.co/query?function=REALTIME_PUT_CALL_RATIO&symbol=${symbol}&apikey=${need("AV_KEY")}`);
     const v = parseFloat(j.put_call_ratio_full_chain);
-    if (!Number.isFinite(v)) throw new Error(String(j.Information || j.Note || j["Error Message"] || "No options data returned").slice(0, 160));
+    if (!Number.isFinite(v)) { const m = String(j.Information || j.Note || j["Error Message"] || "No options data returned"); throw new Error(/rate limit|requests per day|premium|subscribe/i.test(m) ? "Options data is over its free daily limit" : scrub(m).slice(0, 120)); }
     return { symbol, pcr: v };
   });
 }
@@ -386,6 +392,6 @@ http.createServer(async (req, res) => {
     if (u.pathname.startsWith("/api/")) return await api(req, res, u);
     return serveStatic(res, u.pathname);
   } catch (e) {
-    send(res, 502, { error: String(e && e.message || e).slice(0, 240) });
+    send(res, 502, { error: scrub(String(e && e.message || e)).slice(0, 240) });
   }
 }).listen(PORT, () => console.log("Chloe 2 listening on " + PORT));

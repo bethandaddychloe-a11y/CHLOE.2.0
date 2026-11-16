@@ -190,6 +190,16 @@ details.more summary{cursor:pointer;font-size:13px;color:var(--accent)}
 .chip.track{color:var(--accent)}
 .trk{font-size:12.5px;color:var(--muted);font-family:var(--font-mono);overflow-wrap:anywhere}
 .btn.danger{border-color:var(--sell);color:var(--sell)}
+.st-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+.st-card h3{margin:0 0 8px;font-size:15px;font-weight:600}
+.st-row{display:grid;gap:6px;align-items:center;font-size:13px;padding:6px 8px;border-radius:7px;font-family:var(--font-mono)}
+.st-row.hd{color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;padding-block:2px}
+.st-row.low{opacity:.65}
+.st-row span:not(:first-child){text-align:right}
+.st-row .pos{color:var(--buy)} .st-row .neg{color:var(--sell)}
+.st-note{font-size:12.5px;color:var(--muted);margin:8px 0 0}
+.st-verdict{font-size:13.5px;margin:8px 0 0;font-weight:500}
+.eq{width:100%;height:76px;display:block;margin-top:8px}
 /* log */
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .stat{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
@@ -239,6 +249,7 @@ details.more summary{cursor:pointer;font-size:13px;color:var(--accent)}
         </div>
         <p class="status" id="status" role="status">Reads D1, H4, H1 and M15 candles plus dollar and bond proxies.</p>
       </div>
+      <div class="card" id="ndxCal" hidden></div>
       <div id="signalOut"></div>
     </section>
 
@@ -275,10 +286,14 @@ details.more summary{cursor:pointer;font-size:13px;color:var(--accent)}
 
     <!-- LOG -->
     <section class="view" id="v-log" aria-label="Trade log">
+      <div class="seg" id="logTabs" role="group" aria-label="Log view" style="margin-bottom:10px"><button type="button" data-t="trades" aria-pressed="true">Trades</button><button type="button" data-t="stats" aria-pressed="false">Stats</button></div>
+      <div id="logTradesWrap">
       <div class="actions" style="margin:0 0 4px"><button class="btn small" id="chkBtn" type="button">Check open trades now</button></div><p class="status" id="trkMsg" role="status"></p>
       <dl class="stats" id="stats"></dl>
       <p class="foot" id="logNote"></p>
       <div id="logList" style="display:flex;flex-direction:column;gap:10px"></div>
+      </div>
+      <div id="statsWrap" hidden></div>
     </section>
 
   </div></main>
@@ -310,7 +325,7 @@ const PAIRS = {
   USDJPY: { sub: "Dollar-Yen", sym: "USD/JPY", dec: 3, unit: "pips", pip: 0.01, vpp: p => 100000 / p, macro: { usd: 0.6, bond: -0.4 }, need: ["UUP"] },
   GBPUSD: { sub: "Pound-Dollar", sym: "GBP/USD", dec: 5, unit: "pips", pip: 0.0001, vpp: () => 100000, macro: { usd: -1 }, need: ["UUP"] },
   BTCUSD: { sub: "Bitcoin", sym: "BTC/USD", dec: 1, unit: "$", pip: 1, vpp: () => 1, macro: { usd: -0.4, risk: 0.6 }, need: ["UUP", "QQQ"] },
-  NASDAQ: { sub: "Nasdaq-100 via QQQ", sym: "QQQ", dec: 2, unit: "$", pip: 1, vpp: null, macro: { usd: -0.3, bond: 0.7 }, need: ["UUP"] }
+  NASDAQ: { sub: "Nasdaq-100 (QQQ scaled to your broker)", sym: "QQQ", dec: 1, unit: "$", pip: 1, vpp: null, macro: { usd: -0.3, bond: 0.7 }, need: ["UUP"] }
 };
 const PROXY_NAME = { UUP: "Dollar (UUP)", TLT: "Long bonds (TLT)", QQQ: "Nasdaq (QQQ)" };
 const OPT = { XAUUSD: { sym: "GLD", sign: 1 }, USDJPY: { sym: "UUP", sign: 1 }, GBPUSD: { sym: "UUP", sign: -1 }, BTCUSD: { sym: "IBIT", sign: 1 }, NASDAQ: { sym: "QQQ", sign: 1 } };
@@ -502,12 +517,29 @@ async function loadFeeds(key) {
 }
 function feedsNote(f) {
   if (!f.errs.length) return "All data feeds loaded.";
-  return `Some feeds did not load. ${f.errs.slice(0, 2).join(" | ")}`;
+  return `Some feeds did not load. ${f.errs.slice(0, 2).map(x => String(x).slice(0, 90)).join(" | ")}`;
 }
 const macSummary = () => Object.values(raw).map(r => r.feeds && r.feeds.macro && r.feeds.macro.parts.join("; ")).find(Boolean) || "not loaded";
 const setStatus = (t, err) => { const s = $("#status"); s.textContent = t; s.classList.toggle("err", !!err); };
 function showUnlock() { $("#unlock").hidden = false; }
 
+/* ---------- Nasdaq: QQQ fund prices converted to your broker's index price ---------- */
+let ndx = store.get("c2.ndx", null); if (!ndx || !(ndx.k > 0)) ndx = null;
+const scaleRows = (rows, k) => rows.map(r => ({ t: r.t, o: r.o * k, h: r.h * k, l: r.l * k, c: r.c * k }));
+function renderNdx() {
+  const el = $("#ndxCal"); if (!el) return; el.hidden = pair !== "NASDAQ"; if (pair !== "NASDAQ") return;
+  const days = ndx ? Math.floor((Date.now() - ndx.at) / 86400000) : 0;
+  el.innerHTML = `<p class="eyebrow">Nasdaq price check</p>
+    <p class="note" style="margin:4px 0 8px">${ndx ? `Prices are converted to your broker's index price (1 QQQ = ${ndx.k.toFixed(2)} points), set ${days === 0 ? "today" : days + " day" + (days > 1 ? "s" : "") + " ago"}. Set it again about once a month, or if the price looks off.` : "Free data only has the QQQ fund, which trades near $600. Your broker's Nasdaq (USTEC) trades at a much bigger number. Type your broker's price now and Chloe 2 converts every level to match."}</p>
+    <div class="fields"><div class="field"><label for="ndxIn">Your broker's USTEC price now</label><input class="inp mono" id="ndxIn" inputmode="decimal" placeholder="for example 25000"></div></div>
+    <div class="actions"><button class="btn primary" id="ndxSave" type="button">${ndx ? "Update" : "Save"} conversion</button></div><p class="status" id="ndxMsg" role="status"></p>`;
+  $("#ndxSave").onclick = async () => {
+    const v = parseFloat(String($("#ndxIn").value).replace(/,/g, "")), m = $("#ndxMsg"); if (!(v > 1000)) { m.className = "status err"; m.textContent = "Type the price shown in your broker app, for example 25000."; return; }
+    m.className = "status"; m.textContent = "Reading the QQQ price…";
+    try { const rows = await getSeries("QQQ", "15min", 30), q = rows[rows.length - 1].c; ndx = { k: v / q, at: Date.now() }; store.set("c2.ndx", ndx); delete raw.NASDAQ; delete results.NASDAQ; renderSignal(); setStatus("Conversion saved. Tap Run analysis for Nasdaq."); }
+    catch (e) { m.className = "status err"; m.textContent = e.message || "Could not read QQQ."; }
+  };
+}
 async function run() {
   if (!ready) { setStatus("The server has no Twelve Data key yet. Add TWELVE_KEY in Render's Environment tab.", true); return; }
   const cfg = PAIRS[pair], key = pair, btn = $("#runBtn"); btn.disabled = true;
@@ -517,7 +549,7 @@ async function run() {
   try {
     setStatus(`Reading ${jobs.length} candle series…`);
     const got = await Promise.all(jobs.map(j => getSeries(j[1], j[2], j[3])));
-    jobs.forEach((j, i) => { if (j[0].startsWith("p:")) R.proxies[j[0].slice(2)] = got[i]; else R[j[0]] = got[i]; });
+    jobs.forEach((j, i) => { if (j[0].startsWith("p:")) R.proxies[j[0].slice(2)] = got[i]; else R[j[0]] = (key === "NASDAQ" && ndx) ? scaleRows(got[i], ndx.k) : got[i]; });
     setStatus("Reading macro, positioning and news feeds…");
     const f = await loadFeeds(key); R.feeds = f; raw[key] = R; results[key] = analyze(key); if (results[key]) results[key].ranAt = Date.now();
     setStatus(`Updated. Last candle ${R.m15.at(-1).t} (data time). ` + feedsNote(f), false);
@@ -543,6 +575,7 @@ function planMath(A) {
 /* ---------- signal rendering ---------- */
 const stars = n => "★".repeat(n) + "☆".repeat(5 - n);
 function renderSignal() {
+  renderNdx();
   const out = $("#signalOut"), cfg = PAIRS[pair], A = results[pair];
   if (!A) {
     out.innerHTML = `<div class="card empty"><p class="eyebrow">${esc(pair)} · ${esc(cfg.sub)}</p>
@@ -570,7 +603,7 @@ function renderSignal() {
       <div class="conv"><span class="conv-n">${A.conv}</span><span class="conv-l">conviction<br>uncalibrated</span></div></div>
     <dl class="kv">
       <div><dt>Direction</dt><dd class="${cls}">${A.verdict === "BUY" ? "Bullish" : A.verdict === "SELL" ? "Bearish" : "No edge"}</dd></div>
-      <div><dt>Expected move</dt><dd>${sgn}${fmtMove(cfg, A.move[0])} to ${fmtMove(cfg, A.move[1])}</dd></div>
+      <div><dt>Expected move</dt><dd>${sgn}${fmtMove(cfg, A.move[0])} to ${sgn}${fmtMove(cfg, A.move[1])}</dd></div>
       <div><dt>Volatility</dt><dd class="${A.vol.toLowerCase()}">${A.vol}</dd></div>
       <div><dt>Risk</dt><dd class="${A.level.toLowerCase()}">${A.level}</dd></div>
     </dl>
@@ -646,7 +679,7 @@ async function persist() {
   else store.set("c2.log", log);
 }
 async function addLog(A, entered) {
-  const P = A.plan, e = { id: "s" + Date.now(), ts: Date.now(), entered: !!entered, enteredAt: entered ? Date.now() : null, pair: A.key, dir: A.verdict, conv: A.conv, entry: P.entry, sl: P.sl, tp1: P.tp1, tp2: P.tp2, mult: A.mult, outcome: null,
+  const P = A.plan, e = { id: "s" + Date.now(), ts: Date.now(), entered: !!entered, enteredAt: entered ? Date.now() : null, k: A.key === "NASDAQ" && ndx ? ndx.k : 1, pair: A.key, dir: A.verdict, conv: A.conv, entry: P.entry, sl: P.sl, tp1: P.tp1, tp2: P.tp2, mult: A.mult, outcome: null,
     votes: { macro: voteOf(A.council.macro.s), tech: voteOf(A.council.tech.s), liq: voteOf(A.council.liq.s), sent: voteOf(A.council.sent.s) } };
   log.unshift(e);
   try { await persist(); } catch { log.shift(); return false; }
@@ -667,12 +700,57 @@ function renderLog() {
       <p class="entry-lv">in ${(+l.entry).toFixed(d)} · sl ${(+l.sl).toFixed(d)} · tp1 ${(+l.tp1).toFixed(d)} · tp2 ${(+l.tp2).toFixed(d)}</p>
       ${l.entered && !l.outcome && track[l.id] ? `<p class="trk">now ${track[l.id].price.toFixed(d)} · ${track[l.id].r >= 0 ? "+" : ""}${track[l.id].r.toFixed(2)}R · checked ${hm(track[l.id].at)}</p>` : ""}${l.note ? `<p class="trk">${esc(l.note)}</p>` : ""}
       <div class="seg" role="group" aria-label="Outcome">${["win", "loss", "skip"].map(o => `<button type="button" data-o="${o}" aria-pressed="${l.outcome === o}">${o === "win" ? "Won" : o === "loss" ? "Lost" : "Skipped"}</button>`).join("")}<button type="button" data-del="1">Delete</button></div></article>`; }).join("");
-  renderHitLine();
+  renderHitLine(); if (logTab === "stats") renderStats();
 }
 $("#logList").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return; const id = b.closest("[data-id]").dataset.id;
   if (b.dataset.del) delLog(id); else if (b.dataset.o) { const l = log.find(x => x.id === id); setOutcome(id, l && l.outcome === b.dataset.o ? null : b.dataset.o); }
 });
+/* ---------- stats ---------- */
+let logTab = "trades";
+const grp = list => { const n = list.length, w = list.filter(l => l.outcome === "win").length, net = w * 1.5 - (n - w), cv = list.filter(l => Number.isFinite(+l.conv)).map(l => +l.conv); return { n, w, rate: n ? w / n : null, net, avgConv: cv.length ? cv.reduce((a, b) => a + b, 0) / cv.length : null }; };
+const pc = v => v === null ? "-" : Math.round(v * 100) + "%";
+const rt = v => (v >= 0 ? "+" : "") + v.toFixed(1) + "R";
+const tOf = l => l.enteredAt || l.ts, cOf = l => l.closedAt || tOf(l);
+function statTable(cols, rows, tpl) {
+  const head = `<div class="st-row hd" style="grid-template-columns:${tpl}">${cols.map(c => `<span>${c}</span>`).join("")}</div>`;
+  return head + rows.map(r => `<div class="st-row ${r.g.n < 10 ? "low" : ""}" style="grid-template-columns:${tpl};background:linear-gradient(90deg,color-mix(in srgb,var(--buy) 16%,transparent) ${r.g.rate === null ? 0 : Math.round(r.g.rate * 100)}%,transparent 0)"><span>${esc(r.label)}</span><span>${r.g.n}</span><span>${pc(r.g.rate)}</span><span class="${r.g.net >= 0 ? "pos" : "neg"}">${rt(r.g.net)}</span>${r.extra !== undefined ? `<span>${r.extra}</span>` : ""}</div>`).join("");
+}
+function renderStats() {
+  const el = $("#statsWrap"), res = log.filter(l => l && (l.outcome === "win" || l.outcome === "loss") && l.pair);
+  if (!res.length) { el.innerHTML = `<div class="st-card"><p class="note">No finished trades yet. Tap "I entered this trade" on a plan and Chloe 2 will build these numbers as trades hit their target or stop.</p></div>`; return; }
+  const all = grp(res), sorted = res.slice().sort((a, b) => cOf(a) - cOf(b));
+  let cum = 0, peak = 0, dd = 0, streak = 0, maxStreak = 0; const pts = [0];
+  sorted.forEach(l => { cum += l.outcome === "win" ? 1.5 : -1; pts.push(cum); peak = Math.max(peak, cum); dd = Math.max(dd, peak - cum); if (l.outcome === "loss") { streak++; maxStreak = Math.max(maxStreak, streak); } else streak = 0; });
+  const lo = Math.min(...pts), hi = Math.max(...pts), span = hi - lo || 1, X = i => (i / (pts.length - 1 || 1)) * 296 + 2, Y = v => 70 - ((v - lo) / span) * 64 - 3;
+  const eq = `<svg class="eq" viewBox="0 0 300 76" role="img" aria-label="Running total in R after each finished trade"><line x1="0" x2="300" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--line)" stroke-dasharray="3 3"/><polyline fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" points="${pts.map((v, i) => X(i).toFixed(1) + "," + Y(v).toFixed(1)).join(" ")}"/></svg>`;
+  const tplA = "1.3fr .7fr .9fr .9fr .9fr", tplB = "1.3fr .7fr .9fr .9fr";
+  const pairs = Object.keys(PAIRS).filter(k => res.some(l => l.pair === k)).map(k => { const g = grp(res.filter(l => l.pair === k)); return { label: k, g, extra: g.avgConv === null ? "-" : Math.round(g.avgConv) }; });
+  const bk = [["Under 40", 0, 39], ["40 to 59", 40, 59], ["60 to 79", 60, 79], ["80 and up", 80, 101]].map(([label, a, b]) => ({ label, g: grp(res.filter(l => +l.conv >= a && +l.conv <= b)) })).filter(r => r.g.n);
+  const hiG = grp(res.filter(l => +l.conv >= 60)), loG = grp(res.filter(l => +l.conv < 60));
+  const cv = hiG.n >= 5 && loG.n >= 5 ? (hiG.rate - loG.rate >= 0.1 ? `Conviction is separating winners: 60+ won ${pc(hiG.rate)} against ${pc(loG.rate)} below 60.` : hiG.rate - loG.rate <= -0.1 ? `Conviction looks backwards: 60+ won ${pc(hiG.rate)} against ${pc(loG.rate)} below 60. Do not size up on it.` : `Conviction is not separating winners yet: 60+ won ${pc(hiG.rate)} against ${pc(loG.rate)} below 60.`) : "Not enough trades in both groups yet to judge conviction (needs 5 or more in each).";
+  const off = -new Date().getTimezoneOffset() / 60, hh = h => String(((h + off) % 24 + 24) % 24).padStart(2, "0") + ":00";
+  const SES = [["Asian", 0, 7], ["London", 7, 12], ["New York", 12, 21], ["Late night", 21, 24]];
+  const ses = SES.map(([n, a, b]) => ({ label: n, g: grp(res.filter(l => { const h = new Date(tOf(l)).getUTCHours(); return h >= a && h < b; })), extra: `${hh(a)}-${hh(b)}` })).filter(r => r.g.n);
+  const hrs = [...new Set(res.map(l => new Date(tOf(l)).getHours()))].sort((a, b) => a - b).map(h => ({ label: String(h).padStart(2, "0") + ":00", g: grp(res.filter(l => new Date(tOf(l)).getHours() === h)) }));
+  const wk = s0 => { const d = new Date(s0), day = (d.getDay() + 6) % 7; d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - day); return d; };
+  const wm = new Map(); res.forEach(l => { const d = wk(cOf(l)), k = +d; if (!wm.has(k)) wm.set(k, []); wm.get(k).push(l); });
+  const f = d => d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const weeks = [...wm.entries()].sort((a, b) => b[0] - a[0]).slice(0, 8).map(([k, v]) => { const s1 = new Date(k), e1 = new Date(k); e1.setDate(e1.getDate() + 6); return { label: f(s1) + "-" + f(e1), g: grp(v) }; });
+  const mm = new Map(); res.forEach(l => { const d = new Date(cOf(l)), k = d.getFullYear() * 12 + d.getMonth(); if (!mm.has(k)) mm.set(k, []); mm.get(k).push(l); });
+  const months = [...mm.entries()].sort((a, b) => b[0] - a[0]).slice(0, 6).map(([k, v]) => ({ label: new Date(Math.floor(k / 12), k % 12, 1).toLocaleDateString(undefined, { month: "short", year: "numeric" }), g: grp(v) }));
+  const kv = (t, v) => `<div><dt>${t}</dt><dd>${v}</dd></div>`;
+  el.innerHTML = `<div class="st-card"><h3>Overview</h3><dl class="plan-out">${kv("Finished trades", all.n)}${kv("Win rate", pc(all.rate))}${kv("Net result", `<span class="${all.net >= 0 ? "buy" : "sell"}">${rt(all.net)}</span>`)}${kv("Average per trade", rt(all.net / all.n))}${kv("Worst dip", "-" + dd.toFixed(1) + "R")}${kv("Longest losing run", maxStreak)}</dl>${eq}<p class="st-note">Running total in R after each finished trade.</p></div>
+    <div class="st-card"><h3>By pair</h3>${statTable(["Pair", "Trades", "Win", "Net", "Avg conv"], pairs, tplA)}</div>
+    <div class="st-card"><h3>Conviction against results</h3>${statTable(["Conviction", "Trades", "Win", "Net"], bk, tplB)}<p class="st-verdict">${cv}</p></div>
+    <div class="st-card"><h3>By session</h3>${statTable(["Session", "Trades", "Win", "Net", "Your time"], ses, tplA)}<p class="st-note">Sessions go by the time you entered, in UTC: Asian 00:00 to 07:00, London 07:00 to 12:00, New York 12:00 to 21:00.</p></div>
+    <div class="st-card"><h3>By entry hour</h3>${statTable(["Hour", "Trades", "Win", "Net"], hrs, tplB)}<p class="st-note">Your phone's time. Hours with only a few trades are mostly luck.</p></div>
+    <div class="st-card"><h3>Weekly report</h3>${statTable(["Week", "Trades", "Win", "Net"], weeks, tplB)}</div>
+    <div class="st-card"><h3>Monthly report</h3>${statTable(["Month", "Trades", "Win", "Net"], months, tplB)}</div>
+    <p class="foot">These are signal results, not your account's returns. A win counts +1.5R and a loss -1R, measured from the plan's entry. Spread, slippage, commission and your real lot size are not included, so real results will be a little lower. Faded rows have fewer than 10 trades, so treat them as noise.</p>`;
+}
+$("#logTabs").onclick = e => { const b = e.target.closest("button"); if (!b) return; logTab = b.dataset.t; $("#logTabs").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", String(x === b))); $("#logTradesWrap").hidden = logTab !== "trades"; $("#statsWrap").hidden = logTab !== "stats"; if (logTab === "stats") renderStats(); };
+
 /* ---------- trade tracker ---------- */
 const track = {}; let tracking = false;
 async function checkTrades(manual) {
@@ -686,13 +764,13 @@ async function checkTrades(manual) {
     const cs = rows.map(r => ({ ms: Date.parse(String(r.t).replace(" ", "T") + "Z"), h: r.h, l: r.l, c: r.c })).filter(c => Number.isFinite(c.ms)), last = cs[cs.length - 1];
     if (!last) { fails++; continue; }
     for (const l of mine) {
-      const t0 = l.enteredAt || l.ts, buy = l.dir === "BUY", entry = +l.entry, sl = +l.sl, tp = +l.tp1, dist = Math.abs(entry - sl) || 1e-9;
+      const t0 = l.enteredAt || l.ts, kk = +l.k || 1, buy = l.dir === "BUY", entry = +l.entry, sl = +l.sl, tp = +l.tp1, dist = Math.abs(entry - sl) || 1e-9;
       if (t0 < cs[0].ms - 900000) { l.note = "Older than the 5 days of price data I can check. Mark it won or lost yourself."; continue; }
       let hit = null;
-      for (const c of cs) { if (c.ms <= t0) continue; const s1 = buy ? c.l <= sl : c.h >= sl, t1 = buy ? c.h >= tp : c.l <= tp; if (s1 || t1) { hit = { win: t1 && !s1, both: s1 && t1, ms: c.ms }; break; } }
+      for (const c of cs) { if (c.ms <= t0) continue; const s1 = buy ? c.l * kk <= sl : c.h * kk >= sl, t1 = buy ? c.h * kk >= tp : c.l * kk <= tp; if (s1 || t1) { hit = { win: t1 && !s1, both: s1 && t1, ms: c.ms }; break; } }
       if (hit) { l.outcome = hit.win ? "win" : "loss"; l.auto = true; l.closedAt = hit.ms; changed = true; delete track[l.id];
         l.note = (hit.win ? "Target 1 hit" : "Stop hit") + " around " + new Date(hit.ms).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" }) + (hit.both ? ". Stop and target were both touched in one 15-minute candle, so it is counted as a loss to be safe." : "."); }
-      else { track[l.id] = { price: last.c, r: (buy ? last.c - entry : entry - last.c) / dist, at: last.ms }; if ((Date.now() - t0) > 72 * 3600000) l.note = "Open for over 3 days. Mark it yourself if you already closed it."; }
+      else { track[l.id] = { price: last.c * kk, r: (buy ? last.c * kk - entry : entry - last.c * kk) / dist, at: last.ms }; if ((Date.now() - t0) > 72 * 3600000) l.note = "Open for over 3 days. Mark it yourself if you already closed it."; }
     }
   }
   if (changed) { try { await persist(); } catch {} }
