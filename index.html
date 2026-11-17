@@ -121,6 +121,13 @@ main{padding-block:16px 96px}
 /* chart */
 .chart{width:100%;height:auto;display:block}
 .chart text{font-family:var(--font-mono);font-size:9px;fill:var(--muted)}
+.ctl{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 8px}
+.ctl .sp{flex:1}
+.cb{font:inherit;font-size:12px;min-height:34px;padding:0 11px;border-radius:17px;border:1px solid var(--line);background:var(--bg);color:var(--muted);cursor:pointer}
+.cb.on{border-color:var(--accent);color:var(--fg);background:color-mix(in srgb,var(--accent) 16%,var(--bg))}
+.chart{touch-action:manipulation}
+.dnotes{margin:10px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;font-size:13px;line-height:1.4}
+.dnotes b{font-weight:600}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:6px}
 
 /* plan */
@@ -478,7 +485,9 @@ function analyze(key) {
   }
   return { key, price, lastT: m15.at(-1).t, tf, net, verdict, conv, agree, move, vol, level, mult,
     council: { macro: { s: macro, text: macroText, src: macroSrc }, tech: { s: tech, text: techText, src: "Twelve Data candles" }, liq: { s: liq, text: liqText, src: "Twelve Data candles" }, sent: { s: sent, text: sentText, src: sentSrc } },
-    riskText, pdh, pdl, hi5, lo5, plan, atrD, h1: h1.slice(-72), ev: evToday };
+    riskText, pdh, pdl, hi5, lo5, plan, atrD, h1: h1.slice(-72), ev: evToday,
+    bars: { m15: m15.slice(-140), h1: h1.slice(-140), h4: h4.slice(-140), d1: d1.slice(-100) },
+    pools: cand, sweep: sweptLow ? { n: sweptLow.n, up: true } : sweptHigh ? { n: sweptHigh.n, up: false } : null, nearUp: above || null, nearDn: below || null };
 }
 
 /* ---------- data via Twelve Data connector ---------- */
@@ -628,11 +637,10 @@ function renderSignal() {
   <section class="card" aria-label="Council">
     <div class="sec-head" style="margin-bottom:6px"><h2 class="h-sec">AI council</h2><span class="note">Votes weighted: technical 35, macro 25, liquidity 20, sentiment 20</span></div>${rows}
   </section>
-  <section class="card" aria-label="Chart"><div class="sec-head" style="margin-bottom:8px"><h2 class="h-sec">H1 and liquidity levels</h2><span class="note">last 72 hours</span></div>${chartSVG(A)}
-    <div class="legend"><span>Dashed: liquidity pools</span>${A.plan ? "<span>Solid: entry, stop, target 1</span>" : ""}</div></section>
+  <section class="card" id="chartCard" aria-label="Chart"></section>
   <section class="card" id="planCard" aria-label="Trade plan"></section>
   <p class="foot">Rule-based signals from price data. Conviction is a strength score, not a win rate, until your log proves otherwise. Not financial advice.</p>`;
-  renderPlan(); renderHitLine();
+  renderPlan(); renderHitLine(); chartSel = null; renderChart();
 }
 function renderHitLine() {
   const el = $("#hitLine"); if (!el) return; const s = logStats();
@@ -665,20 +673,111 @@ function renderPlan() {
   $("#saveBtn").onclick = async () => { const ok = await addLog(A); $("#saveMsg").textContent = ok ? "Saved to your log." : "Could not save."; };
   $("#askBtn").onclick = () => { go("assistant"); send(`Walk me through this ${pair} ${A.verdict} signal. What would make you skip it?`); };
 }
+let chartCfg = Object.assign({ tf: "h1", type: "candle", lv: true, plan: true, ema: true, mv: true }, store.get("c2.chart", null) || {});
+if (!["m15", "h1", "h4", "d1"].includes(chartCfg.tf)) chartCfg.tf = "h1";
+const TFN = { m15: "M15", h1: "H1", h4: "H4", d1: "D1" }, TFSHOW = { m15: 64, h1: 64, h4: 60, d1: 50 };
+const POOLS = { "previous-day high": "PDH", "previous-day low": "PDL", "5-day high": "5D H", "5-day low": "5D L", "Asia high": "Asia H", "Asia low": "Asia L" };
+let chartSel = null;
+const CW = 360, CH = 280, CPL = 4, CPR = 80, CPT = 10, CPB = 18, CFUT = 12;
+function chartGeom(A) {
+  const all = A.bars[chartCfg.tf] || A.bars.h1, n = TFSHOW[chartCfg.tf], bars = all.slice(-n), step = (CW - CPL - CPR) / (bars.length + CFUT);
+  return { all, bars, step, x: i => CPL + (i + .5) * step };
+}
+function renderChart() {
+  const el = $("#chartCard"), A = results[pair]; if (!el || !A) return;
+  const c = chartCfg, cb = (k, v, label, on) => `<button type="button" class="cb${on ? " on" : ""}" data-ck="${k}" data-cv="${v}" aria-pressed="${on}">${label}</button>`;
+  el.innerHTML = `<div class="sec-head" style="margin-bottom:8px"><h2 class="h-sec">Chart and setup</h2></div>
+  <div class="ctl">${Object.keys(TFN).map(k => cb("tf", k, TFN[k], c.tf === k)).join("")}<span class="sp"></span>${cb("type", "candle", "Candles", c.type === "candle")}${cb("type", "line", "Line", c.type === "line")}</div>
+  <p class="note" id="chartRead" style="min-height:18px;margin:0 0 4px;font-family:var(--font-mono);font-size:12px">Tap a candle to see its prices</p>
+  ${chartSVG(A)}
+  <div class="ctl" style="margin:8px 0 0">${cb("lv", "toggle", "Liquidity", c.lv)}${cb("plan", "toggle", "Entry, stop, targets", c.plan)}${cb("ema", "toggle", "Trend lines", c.ema)}${cb("mv", "toggle", "Expected move", c.mv)}</div>
+  ${chartNotes(A)}`;
+  el.onclick = e => {
+    const b = e.target.closest && e.target.closest(".cb");
+    if (b) { const k = b.dataset.ck, v = b.dataset.cv; if (v === "toggle") chartCfg[k] = !chartCfg[k]; else chartCfg[k] = v; if (k === "tf") chartSel = null; store.set("c2.chart", chartCfg); renderChart(); return; }
+    const svg = e.target.closest && e.target.closest("svg.chart"); if (!svg) return;
+    const g = chartGeom(A), r = svg.getBoundingClientRect(), fx = (e.clientX - r.left) / r.width * CW, i = Math.round((fx - CPL) / g.step - .5);
+    chartSel = i >= 0 && i < g.bars.length ? i : null; renderChart();
+  };
+  if (chartSel != null) { const g = chartGeom(A), b = g.bars[chartSel], d = PAIRS[A.key].dec; if (b) $("#chartRead").textContent = `${b.t.slice(5, 16)}  O ${(+b.o).toFixed(d)}  H ${(+b.h).toFixed(d)}  L ${(+b.l).toFixed(d)}  C ${(+b.c).toFixed(d)}`; }
+}
+function chartNotes(A) {
+  const d = PAIRS[A.key].dec, f = v => v.toFixed(d), L = [], P = A.plan, g = chartGeom(A);
+  const cl = g.all.map(b => +b.c), e20 = ema(cl, 20).at(-1), e50 = ema(cl, 50).at(-1);
+  L.push(`<li><b>Trend (${TFN[chartCfg.tf]}):</b> the 20-candle average is ${e20 > e50 ? "above" : "below"} the 50-candle average, so the chart leans ${e20 > e50 ? "up" : "down"}. Price is ${A.price > e20 ? "above" : "below"} the fast line.</li>`);
+  const lq = []; if (A.nearUp) lq.push(`stops above at the ${A.nearUp.n} (${f(A.nearUp.v)})`); if (A.nearDn) lq.push(`stops below at the ${A.nearDn.n} (${f(A.nearDn.v)})`);
+  if (lq.length) L.push(`<li><b>Liquidity:</b> ${lq.join(" and ")}. Dashed lines mark them${A.sweep ? "; the yellow one was swept" : ""}.</li>`);
+  if (A.sweep) L.push(`<li><b>Sweep:</b> the ${A.sweep.n} was just taken and price closed back ${A.sweep.up ? "above" : "below"} it, a possible reversal ${A.sweep.up ? "up" : "down"}.</li>`);
+  if (P) L.push(`<li><b>Setup:</b> ${A.verdict} near ${f(P.entry)}. Red zone is the stop at ${f(P.sl)}. Green zones are target 1 (${f(P.tp1)}) and target 2 (${f(P.tp2)}).</li>`);
+  if (P) L.push(`<li><b>Expected move:</b> the arrow points ${A.verdict === "BUY" ? "up" : "down"} for roughly ${fmtMove(PAIRS[A.key], A.move[0])} to ${fmtMove(PAIRS[A.key], A.move[1])} over the day. It stops at the chart edge when the move is bigger than the view.</li>`);
+  if (!P) L.push(`<li><b>Setup:</b> the analysts say WAIT, so no entry, stop or targets are drawn.</li>`);
+  return `<ul class="dnotes">${L.join("")}</ul>`;
+}
 function chartSVG(A) {
-  const cfg = PAIRS[A.key], d = cfg.dec, bars = A.h1, W = 360, H = 190, pl = 6, pr = 74, pt = 10, pb = 10;
-  const lv = [["PDH", A.pdh, "lvl"], ["PDL", A.pdl, "lvl"], ["5D H", A.hi5, "lvl"], ["5D L", A.lo5, "lvl"]];
-  if (A.plan) lv.push(["Entry", A.plan.entry, "ent"], ["Stop", A.plan.sl, "sl"], ["T1", A.plan.tp1, "tp"]);
-  const vals = bars.map(b => b.c).concat(lv.map(l => l[1])), lo = Math.min(...vals), hi = Math.max(...vals), pad = (hi - lo) * .06 || 1;
-  const y = v => pt + (1 - (v - (lo - pad)) / ((hi + pad) - (lo - pad))) * (H - pt - pb), x = i => pl + i / (bars.length - 1) * (W - pl - pr);
-  const path = bars.map((b, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(b.c).toFixed(1)).join("");
-  const col = { lvl: "var(--muted)", ent: "var(--fg)", sl: "var(--sell)", tp: "var(--buy)" };
-  const labels = lv.map(l => ({ y: y(l[1]), t: `${l[0]} ${l[1].toFixed(d)}`, k: l[2] })).sort((a, b) => a.y - b.y);
-  for (let i = 1; i < labels.length; i++) if (labels[i].y - labels[i - 1].y < 10) labels[i].y = labels[i - 1].y + 10;
-  const lines = lv.map(l => `<line x1="${pl}" x2="${W - pr}" y1="${y(l[1]).toFixed(1)}" y2="${y(l[1]).toFixed(1)}" stroke="${col[l[2]]}" stroke-width="1" ${l[2] === "lvl" ? 'stroke-dasharray="3 3" opacity=".7"' : ""}/>`).join("");
-  const txt = labels.map(l => `<text x="${W - pr + 4}" y="${(l.y + 3).toFixed(1)}" style="fill:${col[l.k]}">${esc(l.t)}</text>`).join("");
-  const lx = x(bars.length - 1), ly = y(bars.at(-1).c);
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="H1 closing prices with liquidity levels">${lines}<path d="${path}" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linejoin="round"/><circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="3" fill="var(--accent)"/>${txt}</svg>`;
+  const cfg = PAIRS[A.key], d = cfg.dec, c = chartCfg, g = chartGeom(A), bars = g.bars, off = g.all.length - bars.length, x = g.x, P = A.plan, W = CW, H = CH, xr = W - CPR;
+  let lo = loOf(bars), hi = hiOf(bars); const span0 = hi - lo || 1;
+  const ext = []; if (c.plan && P) ext.push(P.sl, P.tp1, P.tp2);
+  const pools = c.lv ? (A.pools || []).filter(p => p.v > lo - span0 * 1.5 && p.v < hi + span0 * 1.5) : [];
+  const nearU = pools.filter(p => p.v > A.price).sort((a, b) => a.v - b.v)[0], nearD = pools.filter(p => p.v < A.price).sort((a, b) => b.v - a.v)[0];
+  if (nearU) ext.push(nearU.v); if (nearD) ext.push(nearD.v);
+  if (ext.length) { lo = Math.min(lo, ...ext); hi = Math.max(hi, ...ext); }
+  const pad = (hi - lo) * .05 || 1, L = lo - pad, Hh = hi + pad, y = v => CPT + (1 - (v - L) / (Hh - L)) * (H - CPT - CPB), inR = v => v >= L && v <= Hh;
+  const up = "var(--buy)", dn = "var(--sell)";
+  let s = "";
+  // grid
+  const labs = [];
+  for (let k = 0; k <= 4; k++) { const v = L + (Hh - L) * k / 4, yy = y(v); s += `<line x1="${CPL}" x2="${xr}" y1="${yy.toFixed(1)}" y2="${yy.toFixed(1)}" stroke="var(--line)" stroke-width=".6" opacity=".7"/>`; labs.push({ y: yy, t: v.toFixed(d), fill: "var(--muted)", pr: 0 }); }
+  // plan zones
+  const ex = x(bars.length - 1);
+  if (c.plan && P) {
+    const z = (a, b, col, o) => `<rect x="${ex.toFixed(1)}" y="${Math.min(y(a), y(b)).toFixed(1)}" width="${(xr - ex).toFixed(1)}" height="${Math.abs(y(a) - y(b)).toFixed(1)}" fill="${col}" opacity="${o}"/>`;
+    s += z(P.entry, P.sl, dn, .18) + z(P.entry, P.tp1, up, .18) + z(P.tp1, P.tp2, up, .09);
+  }
+  // pools
+  for (const p of pools) {
+    const sw = A.sweep && A.sweep.n === p.n, nm = POOLS[p.n] || p.n, yy = y(p.v);
+    s += `<line x1="${CPL}" x2="${xr}" y1="${yy.toFixed(1)}" y2="${yy.toFixed(1)}" stroke="${sw ? "var(--warn)" : "var(--muted)"}" stroke-width="1" stroke-dasharray="4 3" opacity=".85"/>`;
+    labs.push({ y: yy, t: `${nm} ${p.v.toFixed(d)}`, fill: sw ? "var(--warn)" : "var(--muted)", pr: 2 });
+  }
+  // trend lines
+  if (c.ema) {
+    const cl = g.all.map(b => +b.c), line = (arr, col, w) => `<path d="${arr.slice(off).map((v, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1)).join("")}" fill="none" stroke="${col}" stroke-width="${w}" opacity=".9"/>`;
+    s += line(ema(cl, 50), "var(--muted)", 1.2) + line(ema(cl, 20), "var(--warn)", 1.2);
+  }
+  // candles or line
+  if (c.type === "line") {
+    s += `<path d="${bars.map((b, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(+b.c).toFixed(1)).join("")}" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linejoin="round"/>`;
+  } else {
+    const bw = Math.max(1.2, g.step * .6);
+    s += bars.map((b, i) => { const o = +b.o, cc = +b.c, col = cc >= o ? up : dn, xx = x(i), top = y(Math.max(o, cc)), bh = Math.max(.8, Math.abs(y(o) - y(cc)));
+      return `<line x1="${xx.toFixed(1)}" x2="${xx.toFixed(1)}" y1="${y(+b.h).toFixed(1)}" y2="${y(+b.l).toFixed(1)}" stroke="${col}" stroke-width="1"/><rect x="${(xx - bw / 2).toFixed(1)}" y="${top.toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" fill="${col}"/>`; }).join("");
+  }
+  // entry and stop and target lines
+  if (c.plan && P) {
+    [["Entry", P.entry, "var(--fg)", 3], ["Stop", P.sl, dn, 3], ["T1", P.tp1, up, 3], ["T2", P.tp2, up, 3]].forEach(([n, v, col, pr]) => {
+      s += `<line x1="${ex.toFixed(1)}" x2="${xr}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="${col}" stroke-width="1.2"/>`; labs.push({ y: y(v), t: `${n} ${v.toFixed(d)}`, fill: col, pr });
+    });
+    s += `<circle cx="${ex.toFixed(1)}" cy="${y(P.entry).toFixed(1)}" r="3.5" fill="var(--bg)" stroke="var(--fg)" stroke-width="1.5"/>`;
+  }
+  // expected move arrow
+  if (c.mv && P) {
+    const sg = A.verdict === "BUY" ? 1 : -1, a = A.price + sg * A.move[0], b2 = A.price + sg * A.move[1], ax = ex + (xr - ex) * .55;
+    { const col = sg > 0 ? up : dn, tipY = Math.min(H - CPB - 4, Math.max(CPT + 4, y(b2))), hd = sg > 0 ? 5 : -5;
+      s += `<line x1="${ax.toFixed(1)}" x2="${ax.toFixed(1)}" y1="${y(A.price).toFixed(1)}" y2="${tipY.toFixed(1)}" stroke="${col}" stroke-width="1.4" stroke-dasharray="2 2"/><path d="M${(ax - 3.5).toFixed(1)} ${(tipY + hd).toFixed(1)} L${ax.toFixed(1)} ${tipY.toFixed(1)} L${(ax + 3.5).toFixed(1)} ${(tipY + hd).toFixed(1)}" fill="none" stroke="${col}" stroke-width="1.4"/>`;
+      if (inR(a)) s += `<line x1="${(ax - 4).toFixed(1)}" x2="${(ax + 4).toFixed(1)}" y1="${y(a).toFixed(1)}" y2="${y(a).toFixed(1)}" stroke="${col}" stroke-width="1.4"/>`; }
+  }
+  // selected candle
+  if (chartSel != null && bars[chartSel]) s += `<line x1="${x(chartSel).toFixed(1)}" x2="${x(chartSel).toFixed(1)}" y1="${CPT}" y2="${H - CPB}" stroke="var(--fg)" stroke-width=".8" stroke-dasharray="2 2" opacity=".7"/>`;
+  // last price tag
+  labs.push({ y: y(A.price), t: `Now ${A.price.toFixed(d)}`, fill: "var(--accent)", pr: 4 });
+  // axis dates
+  const tk = Math.ceil(bars.length / 3), intra = c.tf === "m15" || c.tf === "h1";
+  for (let i = 4; i < bars.length - 2; i += tk) { const t = String(bars[i].t); s += `<text x="${x(i).toFixed(1)}" y="${H - 5}" text-anchor="middle">${esc(intra ? t.slice(8, 10) + "th " + t.slice(11, 16) : t.slice(5, 10))}</text>`; }
+  // labels: higher priority first, drop ones that collide
+  const placed = [], keep = labs.sort((a, b) => b.pr - a.pr);
+  for (const l of keep) if (!placed.some(p => Math.abs(p.y - l.y) < 10) && l.y > CPT - 2 && l.y < H - CPB + 2) placed.push(l);
+  s += placed.map(l => `<text x="${xr + 4}" y="${(l.y + 3).toFixed(1)}" style="fill:${l.fill}">${esc(l.t)}</text>`).join("");
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${TFN[c.tf]} ${c.type === "line" ? "line" : "candle"} chart with the analysts' levels and trade setup">${s}</svg>`;
 }
 
 /* ---------- log ---------- */
