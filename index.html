@@ -200,6 +200,17 @@ details.more summary{cursor:pointer;font-size:13px;color:var(--accent)}
 .st-note{font-size:12.5px;color:var(--muted);margin:8px 0 0}
 .st-verdict{font-size:13.5px;margin:8px 0 0;font-weight:500}
 .eq{width:100%;height:76px;display:block;margin-top:8px}
+/* scorecard */
+#evScore .card{margin-bottom:10px}
+.pred-line{font-size:13.5px;margin:6px 0 0}
+.pred-line b{font-weight:600}
+.pred-pairs{display:grid;gap:4px;margin-top:8px}
+.pred-pair{display:grid;grid-template-columns:76px 54px 1fr auto;gap:8px;align-items:center;font-size:13px}
+.pred-pair .mv{color:var(--muted);font-family:var(--font-mono);font-size:12px}
+.vchip{border-radius:6px;padding:1px 9px;font-size:12px;font-weight:600;border:1px solid currentColor}
+.vchip.ok{color:var(--buy)} .vchip.no{color:var(--sell)} .vchip.mid{color:var(--muted)}
+.agents p{margin:6px 0 0;font-size:13px}
+.agents b{font-weight:600}
 /* log */
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .stat{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
@@ -255,12 +266,16 @@ details.more summary{cursor:pointer;font-size:13px;color:var(--accent)}
 
     <!-- EVENTS -->
     <section class="view" id="v-events" aria-label="News events">
+      <div class="seg" id="evTabs" role="group" aria-label="News view" style="margin-bottom:10px"><button type="button" data-t="up" aria-pressed="true">Upcoming</button><button type="button" data-t="score" aria-pressed="false">Scorecard</button></div>
+      <div id="evUp">
       <div class="sec-head" style="margin-bottom:6px"><h2 class="h-sec">Upcoming news</h2><button class="btn small" id="calReload" type="button">Refresh</button></div>
-      <p class="note" style="margin-bottom:10px">High and medium impact news for USD, GBP and JPY. Tap Analyse and Chloe 2 researches the event by itself, then gives BUY, SELL or WAIT for each pair. Quick mode takes a few seconds; Deep mode searches the web and is slower.</p>
-      <label class="check" style="margin-bottom:10px"><input type="checkbox" id="deepOn"> Deep web research (slower, up to a minute)</label>
+      <p class="note" style="margin-bottom:10px">High and medium impact news for USD, GBP and JPY. Tap Analyse and Chloe 2 researches the event by itself, then gives BUY, SELL or WAIT for each pair. Quick mode takes a few seconds; Deep mode runs four research agents on the web and is slower. Every analysis you run before a release is saved to your Scorecard and checked automatically afterwards.</p>
+      <label class="check" style="margin-bottom:10px"><input type="checkbox" id="deepOn"> Deep web research (four agents, up to 90 seconds)</label>
       <div id="calList"></div>
       <p class="status" id="calStatus" role="status"></p>
       <p class="foot">The odds are an AI estimate from web research, not a data feed. Prices spike both ways in the first minutes after a release, so read the call as the lean for the move after the spike. The calendar comes from a free weekly feed, so check the forecast before you trade it.</p>
+      </div>
+      <div id="evScore" hidden></div>
     </section>
 
     <!-- ASSISTANT -->
@@ -784,7 +799,7 @@ async function initStore() {
   useServer = !!(status.keys && status.keys.upstash);
   if (useServer) { try { log = (await api("/api/log")).log || []; } catch (e) { if (e.locked) return; useServer = false; } }
   if (!useServer) { log = store.get("c2.log", []); localMode = true; }
-  renderLog(); checkTrades();
+  loadPreds().then(() => { renderScore(); scorePreds(); }); renderLog(); checkTrades();
 }
 /* ---------- assistant ---------- */
 const turns = []; let ctl = null;
@@ -897,12 +912,105 @@ function resultHTML(x, r, meta) {
     ${found ? `<p class="note">Chloe 2 found: ${esc(found)}.</p>` : ""}
     <div class="odds" role="img" aria-label="Below ${below}%, in line ${match}%, above ${above}%"><div class="o-b" style="flex:${below || 1}">Below ${below}%</div><div class="o-m" style="flex:${match || 1}">In line ${match}%</div><div class="o-a" style="flex:${above || 1}">Above ${above}%</div></div>
     <p class="note">${esc(r.summary || "")}</p>
+    ${r.confidence && r.confidence.level ? `<p class="note"><b>Confidence: ${esc(r.confidence.level)}</b>${r.confidence.why ? ". " + esc(r.confidence.why) : ""}</p>` : ""}
     ${dr.length ? `<ul class="drivers">${dr.map(d => `<li>${esc(d)}</li>`).join("")}</ul>` : ""}
     <div><div class="sec-head"><h3 class="h-sec" style="font-size:15px">Verdict</h3><span class="note">after the release</span></div><div class="calls" style="margin-top:8px">${calls}</div></div>
     <details class="more"><summary>Every scenario</summary>${scen}</details>
+    ${(meta.agents || []).length ? `<details class="more agents"><summary>Research notes</summary>${meta.history ? `<p><b>Official data</b>: ${esc(meta.history)}</p>` : ""}${meta.agents.map(a => `<p><b>${esc(a.name)}</b>: ${esc(a.note)}</p>`).join("")}</details>` : ""}
     <p class="srcs">${src ? "Sources: " + src : meta.quick ? "Quick mode: built from your live macro data and recent headlines. Tick Deep web research for a full web search." : meta.searched === false ? "Web search was not available, so this uses the AI's own knowledge and your live macro data only." : ""}</p>
   </div>`;
 }
+/* ---------- predictions and scorecard ---------- */
+let preds = [], scoring = false;
+const RX_THR = { XAUUSD: 0.10, USDJPY: 0.08, GBPUSD: 0.08, BTCUSD: 0.25, NASDAQ: 0.10 };
+function parseVal(v) { const m = String(v || "").replace(/[,\s%$]/g, "").match(/^(-?\d+(?:\.\d+)?)([kmbt])?$/i); if (!m) return null; return parseFloat(m[1]) * ({ k: 1e3, m: 1e6, b: 1e9, t: 1e12 }[(m[2] || "").toLowerCase()] || 1); }
+function callsFor(x, r) {
+  const o = r.odds || {}, below = +o.below || 0, match = +o.match || 0, above = +o.above || 0, tot = below + match + above || 100, R = r.reactions || {};
+  const pick = above >= below && above >= match ? "above" : below >= match ? "below" : "match";
+  const calls = (REL[x.cur] || REL.USD).map(k => { const q = R[k] || {}, net = (below * sgnOf(q.below && q.below.dir) + match * sgnOf(q.match && q.match.dir) + above * sgnOf(q.above && q.above.dir)) / tot; return { pair: k, call: net >= 0.2 ? "BUY" : net <= -0.2 ? "SELL" : "WAIT", net }; });
+  return { pick, odds: { below, match, above }, calls };
+}
+async function loadPreds() {
+  if (useServer) { try { preds = (await api("/api/preds")).preds || []; return; } catch (e) { if (e.locked) return; } }
+  preds = store.get("c2.preds", []);
+}
+async function persistPreds() { if (useServer) await api("/api/preds", { method: "PUT", body: JSON.stringify({ preds: preds.slice(0, 200) }) }); else store.set("c2.preds", preds); }
+async function savePred(x, r, mode) {
+  if (x.t < Date.now() + 120000) return "This news is already out, so it is not counted in your Scorecard.";
+  const fc = x.forecast || String(r.forecast || ""); if (parseVal(fc) === null) return "There is no single forecast figure to score this one against, so it is not counted in your Scorecard.";
+  const c = callsFor(x, r), id = evKey(x), i = preds.findIndex(q => q.id === id);
+  if (i >= 0 && preds[i].outcome) return "This news already has a result in your Scorecard.";
+  const rec = { id, ev: { title: x.title, cur: x.cur, impact: x.impact, t: x.t }, madeAt: Date.now(), mode, fc, odds: c.odds, pick: c.pick, calls: c.calls.map(q => ({ pair: q.pair, call: q.call, lean: Math.round(Math.abs(q.net) * 100) })), conf: (r.confidence && r.confidence.level) || "", status: "pending", tries: 0 };
+  if (i >= 0) preds[i] = rec; else preds.unshift(rec);
+  try { await persistPreds(); } catch { return "Could not save this to your Scorecard."; }
+  renderScore();
+  return `Saved to your Scorecard (${mode} research). Chloe 2 will check the result after the release.`;
+}
+async function scorePreds(manual) {
+  if (scoring) return; const now = Date.now(), due = preds.filter(p => p.status === "pending" && now > p.ev.t + 5 * 60000); if (!due.length) return;
+  scoring = true; let changed = false; const msg = $("#scMsg"); if (msg) { msg.className = "status"; msg.textContent = "Checking results…"; }
+  try {
+    for (const p of due) {
+      if (!p.outcome && (manual || !p.lastTry || now - p.lastTry > 8 * 60000) && (p.tries || 0) < 8) {
+        p.lastTry = now; p.tries = (p.tries || 0) + 1; changed = true;
+        try {
+          const j = await api("/api/llm", { method: "POST", body: JSON.stringify({ messages: [{ role: "user", content: `Search the web for the actual published result of the ${p.ev.cur} ${p.ev.title} release scheduled for ${new Date(p.ev.t).toUTCString()}. Reply with only JSON: {"found":true or false,"actual":"the figure as published, for example 0.4% or 215K"}. Set found to false if it has not been published yet or you cannot confirm it from a source.` }], json: true, search: true, maxTokens: 800 }) });
+          const r = parseLoose(j.text), a = r && r.found ? parseVal(r.actual) : null, f = parseVal(p.fc);
+          if (a !== null && f !== null) { p.actual = String(r.actual); p.outcome = Math.abs(a - f) < 1e-9 ? "match" : a > f ? "above" : "below"; p.numRight = p.outcome === p.pick; }
+        } catch (e) { if (e.locked) { showUnlock(); break; } }
+      }
+      if (!p.pairs && now > p.ev.t + 65 * 60000) {
+        const out = [], T = 900000, i0 = Math.floor(p.ev.t / T) * T, i1 = Math.floor((p.ev.t + 45 * 60000) / T) * T; changed = true;
+        for (const c of p.calls) {
+          let pct = null;
+          try {
+            const size = Math.min(500, Math.max(30, Math.ceil((now - p.ev.t) / T) + 12)), rows = (await api(`/api/series?symbol=${encodeURIComponent(PAIRS[c.pair].sym)}&interval=15min&size=${size}&tz=UTC`)).rows;
+            const cs = rows.map(z => ({ ms: Date.parse(String(z.t).replace(" ", "T") + "Z"), o: z.o, c: z.c })), a0 = cs.find(z => z.ms === i0), a1 = cs.find(z => z.ms === i1);
+            if (a0 && a1 && a0.o) pct = (a1.c - a0.o) / a0.o * 100;
+          } catch (e) { if (e.locked) break; }
+          const thr = RX_THR[c.pair] || 0.1;
+          out.push({ pair: c.pair, call: c.call, pct, res: c.call === "WAIT" ? "wait" : pct === null ? "nodata" : Math.abs(pct) < thr ? "flat" : (c.call === "BUY") === (pct > 0) ? "right" : "wrong" });
+        }
+        p.pairs = out;
+      }
+      if (p.outcome && p.pairs) p.status = "scored";
+    }
+    if (changed) { try { await persistPreds(); } catch {} }
+  } finally { scoring = false; renderScore(); if (msg) msg.textContent = ""; }
+}
+const SCN = { below: "Below forecast", match: "In line", above: "Above forecast" };
+function renderScore() {
+  const el = $("#evScore"); if (!el) return;
+  const done = preds.filter(p => p.outcome), nr = done.filter(p => p.numRight).length, pr = preds.flatMap(p => p.pairs || []), pw = pr.filter(q => q.res === "right").length, pl = pr.filter(q => q.res === "wrong").length;
+  const now = Date.now(), pct = (a, b) => b ? Math.round(a / b * 100) + "%" : "-";
+  let h = `<div class="card"><h2 class="h-sec">How Chloe 2's predictions did</h2>
+    <dl class="plan-out"><div><dt>Number called right</dt><dd>${done.length ? `${nr} of ${done.length} (${pct(nr, done.length)})` : "none scored yet"}</dd></div><div><dt>Pair calls right</dt><dd>${pw + pl ? `${pw} of ${pw + pl} (${pct(pw, pw + pl)})` : "none scored yet"}</dd></div></dl>
+    <p class="note" style="margin-top:8px">The number is right when the most likely outcome (below, in line or above the forecast) is what happened. A pair call is right when the price moved the called way in the first hour after the release. WAIT calls and tiny moves are left out. With under 20 results, treat these as a hint only.</p>
+    <div class="actions"><button class="btn small" id="scNow" type="button">Check results now</button></div><p class="status" id="scMsg" role="status"></p></div>`;
+  if (!preds.length) h += `<div class="card"><p class="note">No predictions yet. Tap Analyse on any upcoming news with a forecast figure. It is saved here before the release and checked automatically afterwards.</p></div>`;
+  h += preds.map(p => {
+    const released = now > p.ev.t, when = new Date(p.ev.t).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    const st = p.outcome ? `<span class="vchip ${p.numRight ? "ok" : "no"}">${p.numRight ? "Number right" : "Number wrong"}</span>` : released ? `<span class="vchip mid">Checking result</span>` : `<span class="vchip mid">Waiting for release</span>`;
+    const o = p.odds || {};
+    const pairs = (p.pairs || p.calls.map(c => ({ pair: c.pair, call: c.call, res: "pending" }))).map(q => `<div class="pred-pair"><span class="mono">${q.pair}</span><span class="chip ${q.call.toLowerCase()}">${q.call}</span><span class="mv">${q.pct === null || q.pct === undefined ? (q.res === "nodata" ? "no price data" : "") : (q.pct >= 0 ? "+" : "") + q.pct.toFixed(2) + "% in 1h"}</span>${q.res === "right" ? `<span class="vchip ok">Right</span>` : q.res === "wrong" ? `<span class="vchip no">Wrong</span>` : `<span class="vchip mid">${{ wait: "No call", flat: "Flat", nodata: "No data", pending: released ? "Checking" : "Waiting" }[q.res] || ""}</span>`}</div>`).join("");
+    return `<article class="news" data-id="${esc(p.id)}"><div class="news-top"><span class="ichip ${p.ev.impact === "High" ? "hi" : "md"}">${esc(p.ev.impact)}</span><span class="tag">${esc(CTRY[p.ev.cur] || p.ev.cur)}</span><span class="tag">${esc(p.mode)}</span>${st}</div>
+      <h3 style="font-size:15.5px;margin:8px 0 0">${esc(p.ev.title)}</h3><p class="when" style="font-size:12.5px;color:var(--muted);margin:2px 0 0">${esc(when)} · forecast ${esc(p.fc)}</p>
+      <p class="pred-line">Predicted: <b>${SCN[p.pick]}</b> (below ${o.below}%, in line ${o.match}%, above ${o.above}%)${p.conf ? ` · confidence ${esc(p.conf)}` : ""}</p>
+      ${p.outcome ? `<p class="pred-line">Actual: <b>${esc(p.actual || "entered by you")}</b> against ${esc(p.fc)}, so <b>${SCN[p.outcome]}</b>.</p>` : released ? `<p class="pred-line">Actual result: not found yet. If you know it, tell me: <span class="seg" style="display:inline-flex;margin-left:4px">${["below", "match", "above"].map(k => `<button class="btn small setAct" data-o="${k}" type="button">${SCN[k]}</button>`).join("")}</span></p>` : ""}
+      <div class="pred-pairs">${pairs}</div>
+      <div class="actions" style="margin-top:8px"><button class="btn small delPred" type="button">Delete</button></div></article>`;
+  }).join("");
+  el.innerHTML = h;
+  const b = $("#scNow"); if (b) b.onclick = () => scorePreds(true);
+}
+$("#evScore").onclick = async e => {
+  const a = e.target.closest("article"); if (!a) return; const p = preds.find(q => q.id === a.dataset.id); if (!p) return;
+  if (e.target.closest(".delPred")) { preds = preds.filter(q => q !== p); try { await persistPreds(); } catch {} renderScore(); return; }
+  const b = e.target.closest(".setAct"); if (b) { p.outcome = b.dataset.o; p.actual = ""; p.numRight = p.outcome === p.pick; p.manual = true; try { await persistPreds(); } catch {} renderScore(); scorePreds(); }
+};
+$("#evTabs").onclick = e => { const b = e.target.closest("button"); if (!b) return; $("#evTabs").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", String(x === b))); $("#evUp").hidden = b.dataset.t !== "up"; $("#evScore").hidden = b.dataset.t !== "score"; if (b.dataset.t === "score") { renderScore(); scorePreds(); } };
+setInterval(() => { if (!document.hidden && preds.some(p => p.status === "pending")) scorePreds(); }, 300000);
+
 async function analyseEvent(i) {
   const x = calShown[i]; if (!x) return; const k = evKey(x);
   calCache[k] = { loading: true, html: `<p class="status">Researching ${esc(x.title)} on the web…</p>` }; renderCal();
@@ -915,10 +1023,11 @@ Latest US macro readings from live data: ${macSummary()}.
 ${deep ? "First, search the web for: the consensus forecast for this event, the last three releases and whether they beat or missed, what the central bank has said recently, and any current news (wars, markets, oil, big companies) that could change how markets react." : "Use the live macro readings above, these recent market headlines, and what you know about the last releases and the central bank:\n" + (heads || "(no headlines available)")} Then estimate the chance the actual figure comes in below, in line with, or above the forecast (integers summing to 100), and how each pair usually reacts in each case: ${list}. Be honest that this is an estimate. Keep every "why" under 16 words.
 Reply with only JSON, no markdown: {"forecast":"","previous":"","odds":{"below":0,"match":0,"above":0},"summary":"one or two sentences","drivers":["up to 4 short findings from your research"],"reactions":{"XAUUSD":{"below":{"dir":"BUY|SELL|CHOP","why":""},"match":{"dir":"","why":""},"above":{"dir":"","why":""}}}} with an entry for each pair key: ${Object.keys(PAIRS).join(", ")}.`;
   try {
-    const ac = new AbortController(), to = setTimeout(() => ac.abort(), deep ? 100000 : 50000);
-    let j; try { j = await api("/api/llm", { method: "POST", signal: ac.signal, body: JSON.stringify({ messages: [{ role: "user", content: prompt }], json: true, search: deep, maxTokens: 3500 }) }); } finally { clearTimeout(to); }
+    const ac = new AbortController(), to = setTimeout(() => ac.abort(), deep ? 130000 : 50000);
+    let j; try { j = deep ? await api("/api/research", { method: "POST", signal: ac.signal, body: JSON.stringify({ title: x.title, cur: x.cur, impact: x.impact, t: x.t, forecast: x.forecast, previous: x.previous }) }) : await api("/api/llm", { method: "POST", signal: ac.signal, body: JSON.stringify({ messages: [{ role: "user", content: prompt }], json: true, search: deep, maxTokens: 3500 }) }); } finally { clearTimeout(to); }
     const r = parseLoose(j.text); if (!r) throw new Error("The answer came back in the wrong shape. Tap Analyse again.");
-    calCache[k] = { loading: false, html: resultHTML(x, r, Object.assign({}, j, { quick: !deep })) };
+    const saved = await savePred(x, r, deep ? "deep" : "quick");
+    calCache[k] = { loading: false, html: resultHTML(x, r, Object.assign({}, j, { quick: !deep })) + `<p class="note" style="margin-top:8px">${esc(saved)}</p>` };
   } catch (e) { calCache[k] = { loading: false, html: `<p class="status err">${e && e.name === "AbortError" ? "This took too long. " + (deep ? "Untick Deep web research for a faster answer, or tap Analyse again." : "Tap Analyse again.") : esc(askErr(e))}</p>` }; if (e && e.locked) showUnlock(); }
   renderCal();
   const el = document.querySelector(`.news[data-i="${i}"]`); if (el) el.scrollIntoView({ block: "start", behavior: "smooth" });

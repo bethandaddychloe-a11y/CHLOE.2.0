@@ -341,6 +341,52 @@ async function closePosition(id) {
   return { ok: true };
 }
 
+/* ---------- deep research: four search agents plus a chair, with official numbers from FRED ---------- */
+const FRED_HIST = [
+  [/core\s*pce|pce price/i, "PCEPILFE", "pct", "Core PCE m/m %"], [/core cpi/i, "CPILFESL", "pct", "Core CPI m/m %"],
+  [/\bcpi\b|inflation/i, "CPIAUCSL", "pct", "CPI m/m %"], [/\bppi\b|producer/i, "PPIFIS", "pct", "PPI m/m %"],
+  [/non-?farm|payroll|employment change/i, "PAYEMS", "diff", "Non-farm payrolls change (thousands)"], [/unemployment rate/i, "UNRATE", "level", "Unemployment rate %"],
+  [/unemployment claims|jobless/i, "ICSA", "level", "Weekly jobless claims"], [/retail sales/i, "RSAFS", "pct", "Retail sales m/m %"],
+  [/\bgdp\b/i, "A191RL1Q225SBEA", "raw", "GDP q/q annualised %"], [/fomc|rate decision|federal funds/i, "FEDFUNDS", "level", "Fed funds rate %"]
+];
+async function fredHistory(title) {
+  if (!E.FRED_KEY) return "";
+  const m = FRED_HIST.find(x => x[0].test(title)); if (!m) return "";
+  try {
+    const j = await getJson(`https://api.stlouisfed.org/fred/series/observations?series_id=${m[1]}&api_key=${need("FRED_KEY")}&file_type=json&sort_order=desc&limit=14`);
+    const v = (j.observations || []).map(o => parseFloat(o.value)).filter(Number.isFinite); let a = [];
+    if (m[2] === "pct") for (let i = 0; i < 6 && i + 1 < v.length; i++) a.push((v[i] / v[i + 1] - 1) * 100);
+    else if (m[2] === "diff") for (let i = 0; i < 6 && i + 1 < v.length; i++) a.push(v[i] - v[i + 1]); else a = v.slice(0, 6);
+    if (a.length < 3) return "";
+    const avg = a.reduce((x, y) => x + y, 0) / a.length, f = x => Math.abs(x) >= 100 ? x.toFixed(0) : x.toFixed(2);
+    return `${m[3]}, latest first: ${a.map(f).join(", ")}. Average of those ${a.length}: ${f(avg)}. The latest reading is ${a[0] > avg ? "above" : "below"} that average.`;
+  } catch { return ""; }
+}
+const AGENTS = [
+  ["Consensus and history", e => `Find the consensus forecast and the previous value for ${e}. Then give the actual result against forecast for each of the last 6 releases (beat, miss or in line), with numbers.`],
+  ["Central bank", e => `What have the relevant central bank and its officials said in the last 2 weeks that matters for ${e}? Include the expected policy path and any hints about this data.`],
+  ["Market pricing", e => `What is already priced in before ${e}? Cover rate expectations, bond yields, dollar and gold positioning, and what analyst previews expect. How have markets moved into the release?`],
+  ["World events", e => `List news from the last 48 hours (wars, oil, trade, banks, big companies, politics) that could change how markets react to ${e}.`]
+];
+async function research(ev) {
+  const evText = `${ev.cur} ${ev.title} (scheduled ${new Date(ev.t).toUTCString()}; calendar forecast ${ev.forecast || "none"}, previous ${ev.previous || "none"})`;
+  const hist = await fredHistory(ev.title), metas = AGENTS.map(() => ({}));
+  const rs = await Promise.allSettled(AGENTS.map((a, i) => llm([{ role: "user", content: `Today is ${new Date().toUTCString()}. ${a[1](evText)} Reply in under 90 words of plain text. Facts only. Write "not found" for anything you cannot verify.` }], { search: true, maxTokens: 900, meta: metas[i] })));
+  const agents = rs.map((r, i) => ({ name: AGENTS[i][0], ok: r.status === "fulfilled", note: r.status === "fulfilled" ? String(r.value).trim().slice(0, 700) : "Search failed: " + scrub(String(r.reason && r.reason.message || "")).slice(0, 90) }));
+  if (!agents.some(a => a.ok)) throw new Error(agents[0].note);
+  const seen = new Set(), sources = []; for (const m of metas) for (const x of (m.sources || [])) if (!seen.has(x.url) && sources.length < 6) { seen.add(x.url); sources.push(x); }
+  const pairs = "XAUUSD (Gold), USDJPY, GBPUSD, BTCUSD (Bitcoin), NASDAQ (Nasdaq-100)";
+  const chair = `You are the chair of a macro research desk. Today is ${new Date().toUTCString()}.
+Event: ${evText}.
+${hist ? "Official data history (calculated, trust these numbers): " + hist : "No official history numbers were available for this event."}
+Research notes from four analysts:
+${agents.map(a => `- ${a.name}: ${a.note}`).join("\n")}
+Combine all of this. Estimate the chance the actual figure comes in below, in line with, or above the forecast (integers summing to 100). Lean on the official history and the analysts' facts, not on guesses. If the notes disagree or key facts are missing, lower your confidence and keep the odds closer to even. Then say how each pair usually reacts in each case: ${pairs}. Keep every "why" under 16 words.
+Reply with only JSON, no markdown: {"forecast":"","previous":"","odds":{"below":0,"match":0,"above":0},"summary":"one or two sentences","drivers":["up to 4 short findings"],"confidence":{"level":"low|medium|high","why":"one short sentence"},"reactions":{"XAUUSD":{"below":{"dir":"BUY|SELL|CHOP","why":""},"match":{"dir":"","why":""},"above":{"dir":"","why":""}}}} with an entry for each of: XAUUSD, USDJPY, GBPUSD, BTCUSD, NASDAQ.`;
+  const text = await llm([{ role: "user", content: chair }], { json: true, maxTokens: 3000 });
+  return { text, sources, agents, history: hist, searched: metas.some(m => (m.sources || []).length > 0) };
+}
+
 /* ---------- routes ---------- */
 async function api(req, res, u) {
   const p = u.pathname, q = u.searchParams;
@@ -368,6 +414,15 @@ async function api(req, res, u) {
     if (!Array.isArray(m) || !m.length || m.length > 24 || m.some(x => !x || !["user", "assistant"].includes(x.role) || typeof x.content !== "string" || x.content.length > 14000)) throw new Error("Bad messages");
     const meta = {}, text = await llm(m, { json: !!b.json, maxTokens: Math.min(+b.maxTokens || 1200, 3000), search: !!b.search, meta });
     return send(res, 200, { text, sources: meta.sources || [], searched: !!b.search && !meta.searchFailed });
+  }
+  if (p === "/api/research" && req.method === "POST") {
+    const b = await readBody(req), t = +b.t;
+    if (typeof b.title !== "string" || b.title.length > 90 || !["USD", "GBP", "JPY"].includes(b.cur) || !Number.isFinite(t)) throw new Error("Bad event");
+    return send(res, 200, await research({ title: b.title, cur: b.cur, impact: String(b.impact || "").slice(0, 10), t, forecast: String(b.forecast || "").slice(0, 20), previous: String(b.previous || "").slice(0, 20) }));
+  }
+  if (p === "/api/preds") {
+    if (req.method === "GET") { const r = await upstash(["GET", "chloe2:preds"]); let preds = []; try { preds = r ? JSON.parse(r) : []; } catch {} return send(res, 200, { preds }); }
+    if (req.method === "PUT") { const b = await readBody(req, 400000); if (!Array.isArray(b.preds)) throw new Error("Bad predictions"); await upstash(["SET", "chloe2:preds", JSON.stringify(b.preds.slice(0, 200))]); return send(res, 200, { ok: true }); }
   }
   if (p === "/api/log") {
     if (req.method === "GET") { const r = await upstash(["GET", "chloe2:log"]); let log = []; try { log = r ? JSON.parse(r) : []; } catch {} return send(res, 200, { log }); }
