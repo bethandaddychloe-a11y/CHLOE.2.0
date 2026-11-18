@@ -387,6 +387,58 @@ Reply with only JSON, no markdown: {"forecast":"","previous":"","odds":{"below":
   return { text, sources, agents, history: hist, searched: metas.some(m => (m.sources || []).length > 0) };
 }
 
+
+/* ---------- pair drivers: what GBPUSD and USDJPY actually react to ---------- */
+const DRV = {
+  GBPUSD: { home: "UK", bank: "Bank of England", cur: "GBP", yld: "IRLTLT01GBM156N", rate: "IR3TIB01GBM156N",
+    focus: "UK inflation and wage data, Bank of England rate path and vote split, UK gilt yields against US Treasuries, UK growth and politics or budget news, the dollar's own trend" },
+  USDJPY: { home: "Japan", bank: "Bank of Japan", cur: "JPY", yld: "IRLTLT01JPM156N", rate: "IR3TIB01JPM156N",
+    focus: "Bank of Japan policy path and any hint of a hike, the US-Japan 10-year yield gap, Japan's Ministry of Finance comments or intervention in the yen, Japan inflation, risk sentiment (yen is a safe haven)" }
+};
+async function fredLatest(id, n = 8) {
+  if (!E.FRED_KEY) return [];
+  try { const j = await getJson(`https://api.stlouisfed.org/fred/series/observations?series_id=${id}&api_key=${need("FRED_KEY")}&file_type=json&sort_order=desc&limit=${n}`);
+    return (j.observations || []).map(o => ({ d: o.date, v: parseFloat(o.value) })).filter(o => Number.isFinite(o.v)); } catch { return []; }
+}
+async function drivers(pair) {
+  const D = DRV[pair]; if (!D) throw new Error("No driver research for " + pair);
+  return cached("drv:" + pair, 3 * 3600000, async () => {
+    const [home, us, homeR, usR] = await Promise.all([fredLatest(D.yld, 6), fredLatest("DGS10", 70), fredLatest(D.rate, 6), fredLatest("FEDFUNDS", 6)]);
+    const facts = [];
+    if (home.length >= 3 && us.length) {
+      const gapNow = us[0].v - home[0].v, usOld = us[Math.min(us.length - 1, 60)].v, gapOld = usOld - home[Math.min(home.length - 1, 3)].v;
+      facts.push(`${D.home} 10-year yield ${home[0].v.toFixed(2)}% (${home[0].d}); US 10-year ${us[0].v.toFixed(2)}%. The US minus ${D.home} gap is ${gapNow.toFixed(2)} points now against ${gapOld.toFixed(2)} about 3 months ago (${gapNow > gapOld ? "widening, supports the dollar" : "narrowing, supports " + D.cur}).`);
+    }
+    if (homeR.length && usR.length) facts.push(`Short rate: ${D.home} ${homeR[0].v.toFixed(2)}% (${homeR[0].d}), US Fed funds ${usR[0].v.toFixed(2)}%.`);
+    const base = `Today is ${new Date().toUTCString()}. Pair: ${pair}. Be factual, short, no markdown. Say "not found" for anything you cannot verify.`;
+    const asks = [
+      ["Central banks", `${base} What is the ${D.bank}'s current policy rate and last decision, how are markets pricing its next move, and how does that compare with the US Federal Reserve's expected path? Include recent official comments. Under 100 words.`],
+      ["Price drivers", `${base} What has moved ${pair} in the last 2 weeks? Cover: ${D.focus}. Under 100 words.`]
+    ];
+    const metas = asks.map(() => ({}));
+    const rs = await Promise.allSettled(asks.map((a, i) => llm([{ role: "user", content: a[1] }], { search: true, maxTokens: 900, meta: metas[i] })));
+    const notes = rs.map((r, i) => r.status === "fulfilled" ? `- ${asks[i][0]}: ${String(r.value).trim().slice(0, 700)}` : null).filter(Boolean);
+    if (!notes.length) throw new Error(String(rs[0].reason && rs[0].reason.message || "Research failed"));
+    const seen = new Set(), sources = []; for (const m of metas) for (const x of (m.sources || [])) if (!seen.has(x.url) && sources.length < 5) { seen.add(x.url); sources.push(x); }
+    const up = pair === "GBPUSD" ? "GBP gaining on the dollar" : "the dollar gaining on the yen";
+    const chair = `You are the currency desk analyst for ${pair}. Today is ${new Date().toUTCString()}.
+Official data (calculated, trust it): ${facts.join(" ") || "none available"}
+Research notes:
+${notes.join("\n")}
+Score what is pushing ${pair} over the next 1 to 3 days. Positive means ${pair} rises (${up}), negative means it falls. Each score is from -1 to 1. If facts are missing, use 0 for that part.
+Reply with only JSON: {"policy":0,"economy":0,"flows":0,"home_stance":"hawkish|neutral|dovish","us_stance":"hawkish|neutral|dovish","intervention":"none|watch|high","summary":"two short sentences on what the pair wants right now","drivers":["up to 3 short findings"],"confidence":"low|medium|high"}
+policy = rate path and central bank gap. economy = inflation, growth, jobs and yield gap. flows = risk sentiment, safe-haven demand, intervention or political risk. intervention only matters for USDJPY (use "none" for GBPUSD).`;
+    const o = parseLoose(await llm([{ role: "user", content: chair }], { json: true, maxTokens: 1500 }));
+    if (!o || typeof o !== "object") throw new Error("Unreadable driver research");
+    const c = v => Math.max(-1, Math.min(1, Number(v) || 0));
+    const score = Math.max(-1, Math.min(1, 0.45 * c(o.policy) + 0.3 * c(o.economy) + 0.25 * c(o.flows)));
+    const st = v => ["hawkish", "neutral", "dovish"].includes(v) ? v : "neutral";
+    return { pair, score, parts: { policy: c(o.policy), economy: c(o.economy), flows: c(o.flows) }, homeStance: st(o.home_stance), usStance: st(o.us_stance),
+      intervention: pair === "USDJPY" && ["watch", "high"].includes(o.intervention) ? o.intervention : "none", summary: String(o.summary || "").slice(0, 400),
+      drivers: (Array.isArray(o.drivers) ? o.drivers : []).slice(0, 3).map(x => String(x).slice(0, 140)), confidence: ["low", "medium", "high"].includes(o.confidence) ? o.confidence : "low", facts, sources, at: Date.now() };
+  });
+}
+
 /* ---------- routes ---------- */
 async function api(req, res, u) {
   const p = u.pathname, q = u.searchParams;
@@ -400,6 +452,7 @@ async function api(req, res, u) {
   if (p === "/api/cot") return send(res, 200, await cot(q.get("pair")));
   if (p === "/api/options") return send(res, 200, await options(q.get("symbol")));
   if (p === "/api/sentiment") return send(res, 200, await sentiment(q.get("pair")));
+  if (p === "/api/drivers") return send(res, 200, await drivers(q.get("pair")));
   if (p === "/api/calendar") return send(res, 200, await calendar());
   if (p === "/api/trade/status") return send(res, 200, await tradeStatus());
   if (p === "/api/trade/order" && req.method === "POST") return send(res, 200, await placeOrder(await readBody(req)));
