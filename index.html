@@ -238,7 +238,7 @@ details.more summary{cursor:pointer;font-size:13px;color:var(--accent)}
 
 /* tabs */
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--surface);border-top:1px solid var(--line);padding-top:6px;padding-bottom:calc(6px + env(safe-area-inset-bottom,0px))}
-.tabs .col{display:grid;grid-template-columns:repeat(6,1fr);gap:2px}
+.tabs .col{display:grid;grid-template-columns:repeat(7,1fr);gap:0}.tab{font-size:10.5px!important;padding:4px 1px!important}.prop-row{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;padding:5px 0;border-top:1px solid var(--line)}.prop-row:first-child{border-top:0}.prop-row .r{margin-left:auto;font-family:var(--font-mono);font-size:13px}.prog{height:8px;border-radius:6px;background:var(--surface-2);overflow:hidden;margin:6px 0}.prog i{display:block;height:100%;background:var(--accent)}
 .bot-pair{display:grid;gap:3px;padding:8px 0;border-top:1px solid var(--line)}.bot-pair:first-of-type{border-top:0}.bot-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.bot-row .r{margin-left:auto;font-family:var(--font-mono);font-size:12.5px;color:var(--muted)}.bot-warn{border-color:var(--warn);color:var(--warn)}.bot-cfg .field small{font-size:11.5px;color:var(--muted);line-height:1.3}.bot-cfg .field label{text-transform:none;letter-spacing:0;font-size:12.5px}
 .tab{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px;color:var(--muted);font-size:11.5px;cursor:pointer;border-radius:8px}
 .tab svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
@@ -318,6 +318,11 @@ details.more summary{cursor:pointer;font-size:13px;color:var(--accent)}
       <div id="botSet"></div>
     </section>
 
+    <!-- PROP FIRM -->
+    <section class="view" id="v-prop" aria-label="Prop firm challenge">
+      <div id="propBody"></div>
+    </section>
+
     <!-- LOG -->
     <section class="view" id="v-log" aria-label="Trade log">
       <div class="seg" id="logTabs" role="group" aria-label="Log view" style="margin-bottom:10px"><button type="button" data-t="trades" aria-pressed="true">Trades</button><button type="button" data-t="stats" aria-pressed="false">Stats</button></div>
@@ -338,6 +343,7 @@ details.more summary{cursor:pointer;font-size:13px;color:var(--accent)}
     <button class="tab" data-v="assistant" type="button"><svg viewBox="0 0 24 24"><path d="M5 6h14v10H10l-4 3v-3H5z"/></svg>Assistant</button>
     <button class="tab" data-v="auto" type="button"><svg viewBox="0 0 24 24"><path d="M13 3L5 13h6l-1 8 8-10h-6z"/></svg>Auto</button>
     <button class="tab" data-v="bot" type="button"><svg viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="11" rx="2"/><path d="M12 8V4M9 13h.01M15 13h.01M9 16h6"/></svg>Bot</button>
+    <button class="tab" data-v="prop" type="button"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Prop</button>
     <button class="tab" data-v="log" type="button"><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h9"/></svg>Log</button>
   </div></nav>
 </div>
@@ -1368,8 +1374,96 @@ function buildBotSettings() {
     botSend(o, $("#boSaveMsg"));
   };
 }
+/* ---------- prop firm challenge helper ---------- */
+let prop = Object.assign({ firm: "", type: "", size: 10000, rules: null, phase: 0, days: 10, profit: 0, risk: null }, store.get("c2.prop", {}));
+const propSave = () => store.set("c2.prop", prop);
+const usd0 = x => (x < 0 ? "-$" : "$") + Math.abs(Math.round(+x || 0)).toLocaleString();
+const usd2 = x => (x < 0 ? "-$" : "$") + Math.abs(+x || 0).toFixed(2);
+async function propFind() {
+  const firm = $("#pfFirm").value.trim(), type = $("#pfType").value.trim(), size = parseFloat($("#pfSize").value), msg = $("#pfMsg"), btn = $("#pfFind");
+  if (!firm) { msg.className = "status err"; msg.textContent = "Type the prop firm's name first."; return; }
+  if (!(size > 0)) { msg.className = "status err"; msg.textContent = "Type the account size in dollars."; return; }
+  prop.firm = firm; prop.type = type; prop.size = size; btn.disabled = true; msg.className = "status"; msg.textContent = "Searching the web for the firm's current rules… (up to a minute)";
+  const q = `Today is ${new Date().toUTCString()}. Search the web for the CURRENT official trading rules of the prop trading firm "${firm}" for this account: "${type || "their standard challenge"}", account size $${size}. Use the firm's own website or help centre first. Reply with only JSON, no markdown:
+{"found":true,"firm":"","program":"","phases":[{"name":"Phase 1","targetPct":8,"dailyLossPct":5,"maxLossPct":10,"minDays":0,"maxDays":null}],"dailyLossBasis":"balance or equity, and when it resets","drawdownType":"static or trailing, and from what","payout":{"firstPayoutDays":0,"split":"","frequency":""},"fee":"","restrictions":["short rules such as news trading, EAs or bots, scalping minimum hold time, weekend holding, lot or consistency rules"],"notes":"one sentence","uncertain":["anything you could not verify"]}
+Include every phase up to the funded account if it has profit rules (a 1-step firm has one phase). Use null for maxDays when there is no time limit. Never guess a number you cannot find; put it in "uncertain" and use 0 or null. If the firm or account does not exist, reply {"found":false,"notes":"why"}.`;
+  try {
+    const j = await api("/api/llm", { method: "POST", body: JSON.stringify({ messages: [{ role: "user", content: q }], json: true, search: true, maxTokens: 3000 }) });
+    const r = parseLoose(j.text);
+    if (!r || !r.found || !Array.isArray(r.phases) || !r.phases.length) throw new Error((r && r.notes) || "Could not find that firm's rules. Check the spelling, or type the rules in by hand below.");
+    r.phases = r.phases.slice(0, 4).map((p, i) => ({ name: String(p.name || "Phase " + (i + 1)).slice(0, 30), targetPct: +p.targetPct || 0, dailyLossPct: +p.dailyLossPct || 0, maxLossPct: +p.maxLossPct || 0, minDays: Math.max(0, Math.round(+p.minDays || 0)), maxDays: +p.maxDays > 0 ? Math.round(+p.maxDays) : 0 }));
+    r.sources = (j.sources || []).slice(0, 4); r.searched = !!j.searched; prop.rules = r; prop.phase = 0; prop.profit = 0;
+    prop.days = Math.max(r.phases[0].minDays || 0, Math.min(r.phases[0].maxDays || 30, 10)) || 10;
+    propSave(); msg.textContent = ""; renderProp();
+  } catch (e) { if (e.locked) showUnlock(); msg.className = "status err"; msg.textContent = e.message || "Search failed"; }
+  btn.disabled = false;
+}
+function propPlan() {
+  const R = prop.rules, ph = R.phases[prop.phase] || R.phases[0], S = prop.size;
+  const target = S * ph.targetPct / 100, left = Math.max(0, target - prop.profit);
+  const days = Math.max(1, Math.round(prop.days)), daily = S * ph.dailyLossPct / 100, total = S * ph.maxLossPct / 100;
+  let rp = prop.risk != null ? prop.risk : Math.min(1, ph.dailyLossPct ? ph.dailyLossPct / 4 : 1, ph.maxLossPct ? ph.maxLossPct / 10 : 1);
+  rp = Math.max(0.1, Math.round(rp * 4) / 4 || 0.25);
+  const riskUSD = S * rp / 100, EV = 0.35, stopDay = daily * 0.5;
+  const maxTrades = Math.max(1, Math.floor(stopDay / riskUSD)), perDay = left / days, need = perDay / (EV * riskUSD);
+  const safeDays = Math.max(ph.minDays, Math.ceil(left / (EV * riskUSD * maxTrades)));
+  return { ph, target, left, days, daily, total, rp, riskUSD, stopDay, maxTrades, perDay, need, safeDays, tooFast: need > maxTrades, tooShort: ph.minDays && days < ph.minDays };
+}
+function renderProp() {
+  const body = $("#propBody"); if (!body) return; const R = prop.rules;
+  let h = `<div class="card" style="margin-bottom:10px"><p class="eyebrow">Prop firm challenge</p>
+    <p class="note" style="margin:4px 0 10px">Type your prop firm and the account you bought. Chloe 2 searches the web for its rules, then builds a daily plan to pass the challenge safely.</p>
+    <div class="fields"><div class="field"><label for="pfFirm">Prop firm</label><input class="inp" id="pfFirm" placeholder="Funding Pips" value="${esc(prop.firm)}"></div>
+    <div class="field"><label for="pfSize">Account size ($)</label><input class="inp mono" id="pfSize" type="number" inputmode="decimal" value="${prop.size}"></div></div>
+    <div class="field" style="margin-top:10px"><label for="pfType">Account type</label><input class="inp" id="pfType" placeholder="2-step, 10K, standard" value="${esc(prop.type)}"></div>
+    <div class="actions"><button class="btn primary" id="pfFind" type="button">Find the rules</button></div><p class="status" id="pfMsg" role="status"></p></div>`;
+  if (R) {
+    const ph = R.phases[prop.phase] || R.phases[0], P = propPlan();
+    const pr = R.payout || {}, row = (k, v) => v ? `<div class="prop-row"><span class="note">${k}</span><span class="r">${esc(String(v))}</span></div>` : "";
+    h += `<div class="card" style="margin-bottom:10px"><p class="eyebrow">${esc(R.firm || prop.firm)} · ${esc(R.program || prop.type || "challenge")}</p>
+      <div class="seg" id="pfPh" style="margin:8px 0">${R.phases.map((p, i) => `<button type="button" data-i="${i}" aria-pressed="${i === prop.phase}">${esc(p.name)}</button>`).join("")}</div>
+      <div class="fields">
+        <div class="field"><label>Profit target (%)</label><input class="inp mono" data-r="targetPct" type="number" inputmode="decimal" value="${ph.targetPct}"></div>
+        <div class="field"><label>Max daily loss (%)</label><input class="inp mono" data-r="dailyLossPct" type="number" inputmode="decimal" value="${ph.dailyLossPct}"></div>
+        <div class="field"><label>Max total loss (%)</label><input class="inp mono" data-r="maxLossPct" type="number" inputmode="decimal" value="${ph.maxLossPct}"></div>
+        <div class="field"><label>Min trading days</label><input class="inp mono" data-r="minDays" type="number" inputmode="numeric" value="${ph.minDays}"></div>
+        <div class="field"><label>Time limit (days, 0 = none)</label><input class="inp mono" data-r="maxDays" type="number" inputmode="numeric" value="${ph.maxDays}"></div></div>
+      <p class="note" style="margin-top:6px">Tap a number to correct it. The plan below follows what you see here.</p>
+      ${row("Daily loss counted on", R.dailyLossBasis)}${row("Drawdown type", R.drawdownType)}${row("First payout after", pr.firstPayoutDays ? pr.firstPayoutDays + " days" : "")}${row("Profit split", pr.split)}${row("Payout frequency", pr.frequency)}${row("Fee", R.fee)}
+      ${(R.restrictions || []).length ? `<p class="eyebrow" style="margin-top:10px">Rules to watch</p><ul class="steps">${R.restrictions.slice(0, 8).map(x => `<li>${esc(String(x).slice(0, 160))}</li>`).join("")}</ul>` : ""}
+      ${(R.uncertain || []).length ? `<p class="status err" style="margin-top:8px">Not verified: ${esc(R.uncertain.slice(0, 4).join("; ").slice(0, 240))}</p>` : ""}
+      ${R.notes ? `<p class="note" style="margin-top:6px">${esc(String(R.notes).slice(0, 200))}</p>` : ""}
+      <p class="foot" style="margin-top:8px">${R.searched ? "Found by AI web search" : "AI answer without live web search"}${(R.sources || []).length ? ": " + R.sources.map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a>`).join(", ") : ""}. Firms change rules often, so confirm on the firm's own site before you pay or trade.</p></div>
+    <div class="card" style="margin-bottom:10px"><p class="eyebrow">Your plan</p>
+      <div class="fields" style="margin:8px 0"><div class="field"><label for="pfDays">Trading days I will use</label><input class="inp mono" id="pfDays" type="number" inputmode="numeric" value="${prop.days}"></div>
+      <div class="field"><label for="pfProfit">Profit so far ($)</label><input class="inp mono" id="pfProfit" type="number" inputmode="decimal" value="${prop.profit}"></div></div>
+      <div class="prog"><i style="width:${Math.max(0, Math.min(100, P.target ? prop.profit / P.target * 100 : 0)).toFixed(0)}%"></i></div>
+      <p class="note">${usd0(prop.profit)} of ${usd0(P.target)} target. ${usd0(P.left)} to go.</p>
+      <div class="prop-row"><span>Aim per trading day</span><span class="r">${usd0(P.perDay)} (${(P.perDay / prop.size * 100).toFixed(2)}%)</span></div>
+      <div class="prop-row"><span>Risk per trade</span><span class="r">${P.rp}% = ${usd2(P.riskUSD)}</span></div>
+      <div class="prop-row"><span>Stop for the day when down</span><span class="r sell">${usd0(P.stopDay)}</span></div>
+      <div class="prop-row"><span>Firm's daily limit / total limit</span><span class="r">${usd0(P.daily)} / ${usd0(P.total)}</span></div>
+      <div class="prop-row"><span>Most trades per day</span><span class="r">${P.maxTrades}</span></div>
+      <div class="prop-row"><span>Take profit at</span><span class="r">2 × the stop distance</span></div>
+      ${P.tooShort ? `<p class="status err">The firm needs at least ${P.ph.minDays} trading days. Raise the days above.</p>` : ""}
+      ${P.tooFast ? `<p class="status err">${usd0(P.perDay)} a day needs about ${Math.ceil(P.need)} winning-quality trades a day, more than the ${P.maxTrades} this risk allows. Use about ${P.safeDays} trading days instead of rushing. Rushing is the main reason challenges fail.</p>` : `<p class="status">This pace needs about ${Math.max(1, Math.ceil(P.need))} trade${P.need > 1 ? "s" : ""} a day if about 45% win at 2 to 1. It is a fair pace.</p>`}
+      ${P.ph.maxDays && prop.days > P.ph.maxDays ? `<p class="status err">The time limit is ${P.ph.maxDays} days.</p>` : ""}
+      <p class="eyebrow" style="margin-top:12px">Stop and lot for each pair</p>
+      ${Object.keys(PAIRS).map(k => { const A = results[k], c = PAIRS[k]; if (!A || !A.plan || !c.vpp) return `<div class="prop-row"><b>${k}</b><span class="note r">run the analysis on the Signal tab</span></div>`; const lot = Math.max(0, Math.floor(P.riskUSD / (A.plan.dist * c.vpp(A.plan.entry)) * 100) / 100); return `<div class="prop-row"><b>${k}</b><span class="${A.verdict === "BUY" ? "buy" : A.verdict === "SELL" ? "sell" : "wait"}">${A.verdict}</span><span class="note">stop ${A.plan.dist.toFixed(c.dec)} away</span><span class="r">${lot < 0.01 ? "lot under 0.01: skip" : lot.toFixed(2) + " lot"}</span></div>`; }).join("")}
+      <p class="foot" style="margin-top:8px">The lot is sized so a stop-out loses exactly your risk per trade. When profit reaches the target, stop trading and let the minimum days pass. Earliest payout: about ${new Date(Date.now() + (Math.max(P.ph.minDays, prop.days) + (+(R.payout || {}).firstPayoutDays || 0)) * 86400000 * 1.4).toLocaleDateString()} if you pass in ${prop.days} trading days.</p></div>
+    <div class="card bot-warn"><p class="note" style="color:inherit"><b>Keep the scalping bot off prop accounts.</b> The bot opens stacks that risk at least 5% of the account at once, and many firms ban or limit scalping, bots and lot-increasing systems. Trade challenges by hand with the signal tab, with this plan's risk.</p></div>`;
+  }
+  body.innerHTML = h;
+  $("#pfFind").onclick = propFind;
+  if (R) {
+    $("#pfPh").onclick = e => { const b = e.target.closest("button"); if (!b) return; prop.phase = +b.dataset.i; prop.profit = 0; propSave(); renderProp(); };
+    body.querySelectorAll("[data-r]").forEach(i => i.onchange = () => { R.phases[prop.phase][i.dataset.r] = Math.max(0, parseFloat(i.value) || 0); propSave(); renderProp(); });
+    $("#pfDays").onchange = e => { prop.days = Math.max(1, parseInt(e.target.value) || 1); propSave(); renderProp(); };
+    $("#pfProfit").onchange = e => { prop.profit = parseFloat(e.target.value) || 0; propSave(); renderProp(); };
+  }
+}
 /* ---------- navigation ---------- */
-const VIEWS = ["signal", "events", "assistant", "auto", "bot", "log"];
+const VIEWS = ["signal", "events", "assistant", "auto", "bot", "prop", "log"];
 function go(v) { if (location.hash !== "#" + v) location.hash = v; else show(); }
 function show() {
   const v = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "signal";
@@ -1377,6 +1471,7 @@ function show() {
   if (v === "events" && !calData) loadCal(); else if (v === "events") renderCal();
   if (v === "log") checkTrades();
   if (v === "bot") startBot(); else stopBot();
+  if (v === "prop") renderProp();
   if (v === "auto") { if (!tradeInfo) loadTrade(); else renderAuto(); }
   document.querySelectorAll(".tab").forEach(t => t.toggleAttribute("aria-current", false) || (t.dataset.v === v ? t.setAttribute("aria-current", "page") : t.removeAttribute("aria-current")));
 }
