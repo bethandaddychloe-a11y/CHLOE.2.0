@@ -520,7 +520,11 @@ async function api(req, res, u) {
   return send(res, 404, { error: "Not found" });
 }
 
+const ICONS = new Set(["/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", "/favicon-64.png"]);
+const MANIFEST = { name: "Chloe 2", short_name: "Chloe 2", start_url: "/", display: "standalone", background_color: "#fdf5e6", theme_color: "#f6e0e1", icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" }, { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" }] };
 function serveStatic(res, p) {
+  if (p === "/manifest.webmanifest") return send(res, 200, MANIFEST, "application/manifest+json");
+  if (ICONS.has(p)) return fs.readFile(path.join(__dirname, p.slice(1)), (err, data) => { if (err) return send(res, 404, "Not found", "text/plain"); res.writeHead(200, { "content-type": "image/png", "cache-control": "public, max-age=86400" }); res.end(data); });
   if (p !== "/" && p !== "/index.html") return send(res, 404, "Not found", "text/plain");
   fs.readFile(path.join(__dirname, "index.html"), (err, data) => {
     if (err) return send(res, 404, "index.html is missing from the repo", "text/plain");
