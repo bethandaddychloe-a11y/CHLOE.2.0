@@ -233,7 +233,8 @@ details.more summary{cursor:pointer;font-size:13px;color:var(--accent)}
 
 /* tabs */
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--surface);border-top:1px solid var(--line);padding-top:6px;padding-bottom:calc(6px + env(safe-area-inset-bottom,0px))}
-.tabs .col{display:grid;grid-template-columns:repeat(5,1fr);gap:2px}
+.tabs .col{display:grid;grid-template-columns:repeat(6,1fr);gap:2px}
+.bot-pair{display:grid;gap:3px;padding:8px 0;border-top:1px solid var(--line)}.bot-pair:first-of-type{border-top:0}.bot-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.bot-row .r{margin-left:auto;font-family:var(--font-mono);font-size:12.5px;color:var(--muted)}.bot-warn{border-color:var(--warn);color:var(--warn)}.bot-cfg .field small{font-size:11.5px;color:var(--muted);line-height:1.3}.bot-cfg .field label{text-transform:none;letter-spacing:0;font-size:12.5px}
 .tab{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px;color:var(--muted);font-size:11.5px;cursor:pointer;border-radius:8px}
 .tab svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .tab[aria-current="page"]{color:var(--accent)}
@@ -276,7 +277,7 @@ details.more summary{cursor:pointer;font-size:13px;color:var(--accent)}
       <div class="seg" id="evTabs" role="group" aria-label="News view" style="margin-bottom:10px"><button type="button" data-t="up" aria-pressed="true">Upcoming</button><button type="button" data-t="score" aria-pressed="false">Scorecard</button></div>
       <div id="evUp">
       <div class="sec-head" style="margin-bottom:6px"><h2 class="h-sec">Upcoming news</h2><button class="btn small" id="calReload" type="button">Refresh</button></div>
-      <p class="note" style="margin-bottom:10px">High and medium impact news for USD, GBP and JPY. Tap Analyse and Chloe 2 researches the event by itself, then gives BUY, SELL or WAIT for each pair. Quick mode takes a few seconds; Deep mode runs four research agents on the web and is slower. Every analysis you run before a release is saved to your Scorecard and checked automatically afterwards.</p>
+      <p class="note" style="margin-bottom:10px">High and medium impact news for USD and JPY. Tap Analyse and Chloe 2 researches the event by itself, then gives BUY, SELL or WAIT for each pair. Quick mode takes a few seconds; Deep mode runs four research agents on the web and is slower. Every analysis you run before a release is saved to your Scorecard and checked automatically afterwards.</p>
       <label class="check" style="margin-bottom:10px"><input type="checkbox" id="deepOn"> Deep web research (four agents, up to 90 seconds)</label>
       <div id="calList"></div>
       <p class="status" id="calStatus" role="status"></p>
@@ -306,6 +307,12 @@ details.more summary{cursor:pointer;font-size:13px;color:var(--accent)}
       <div id="autoBody"></div>
     </section>
 
+    <!-- BOT -->
+    <section class="view" id="v-bot" aria-label="Scalping bot">
+      <div id="botLive"></div>
+      <div id="botSet"></div>
+    </section>
+
     <!-- LOG -->
     <section class="view" id="v-log" aria-label="Trade log">
       <div class="seg" id="logTabs" role="group" aria-label="Log view" style="margin-bottom:10px"><button type="button" data-t="trades" aria-pressed="true">Trades</button><button type="button" data-t="stats" aria-pressed="false">Stats</button></div>
@@ -325,6 +332,7 @@ details.more summary{cursor:pointer;font-size:13px;color:var(--accent)}
     <button class="tab" data-v="events" type="button"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>Events</button>
     <button class="tab" data-v="assistant" type="button"><svg viewBox="0 0 24 24"><path d="M5 6h14v10H10l-4 3v-3H5z"/></svg>Assistant</button>
     <button class="tab" data-v="auto" type="button"><svg viewBox="0 0 24 24"><path d="M13 3L5 13h6l-1 8 8-10h-6z"/></svg>Auto</button>
+    <button class="tab" data-v="bot" type="button"><svg viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="11" rx="2"/><path d="M12 8V4M9 13h.01M15 13h.01M9 16h6"/></svg>Bot</button>
     <button class="tab" data-v="log" type="button"><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h9"/></svg>Log</button>
   </div></nav>
 </div>
@@ -345,12 +353,10 @@ const store = { get(k, d) { try { const v = localStorage.getItem(k); return v ==
 const PAIRS = {
   XAUUSD: { sub: "Gold", sym: "XAU/USD", dec: 2, unit: "$", pip: 1, vpp: () => 100, macro: { usd: -0.6, bond: 0.4 }, need: ["UUP"] },
   USDJPY: { sub: "Dollar-Yen", sym: "USD/JPY", dec: 3, unit: "pips", pip: 0.01, vpp: p => 100000 / p, macro: { usd: 0.6, bond: -0.4 }, need: ["UUP"] },
-  GBPUSD: { sub: "Pound-Dollar", sym: "GBP/USD", dec: 5, unit: "pips", pip: 0.0001, vpp: () => 100000, macro: { usd: -1 }, need: ["UUP"] },
-  BTCUSD: { sub: "Bitcoin", sym: "BTC/USD", dec: 1, unit: "$", pip: 1, vpp: () => 1, macro: { usd: -0.4, risk: 0.6 }, need: ["UUP", "QQQ"] },
-  NASDAQ: { sub: "Nasdaq-100 (QQQ scaled to your broker)", sym: "QQQ", dec: 1, unit: "$", pip: 1, vpp: null, macro: { usd: -0.3, bond: 0.7 }, need: ["UUP"] }
+  BTCUSD: { sub: "Bitcoin", sym: "BTC/USD", dec: 1, unit: "$", pip: 1, vpp: () => 1, macro: { usd: -0.4, risk: 0.6 }, need: ["UUP", "QQQ"] }
 };
 const PROXY_NAME = { UUP: "Dollar (UUP)", TLT: "Long bonds (TLT)", QQQ: "Nasdaq (QQQ)" };
-const OPT = { XAUUSD: { sym: "GLD", sign: 1 }, USDJPY: { sym: "UUP", sign: 1 }, GBPUSD: { sym: "UUP", sign: -1 }, BTCUSD: { sym: "IBIT", sign: 1 }, NASDAQ: { sym: "QQQ", sign: 1 } };
+const OPT = { XAUUSD: { sym: "GLD", sign: 1 }, USDJPY: { sym: "UUP", sign: 1 }, BTCUSD: { sym: "IBIT", sign: 1 } };
 let pair = store.get("c2.pair", "XAUUSD"); if (!PAIRS[pair]) pair = "XAUUSD";
 const raw = {};      // pair -> fetched candles
 const results = {};  // pair -> analysis
@@ -432,7 +438,7 @@ function analyze(key) {
   const fac = { usd: P.UUP ? proxyTrend(P.UUP) : 0, bond: 0, risk: P.QQQ ? proxyTrend(P.QQQ) : 0 };
   const F = R.feeds || {}, AVm = F.macro;
   const dir = v => v > 0.15 ? "rising" : v < -0.15 ? "falling" : "flat";
-  const sgnM = { XAUUSD: -1, USDJPY: 1, GBPUSD: -1, BTCUSD: -0.6, NASDAQ: -0.6 }[key];
+  const sgnM = { XAUUSD: -1, USDJPY: 1, BTCUSD: -0.6 }[key];
   const pParts = [`dollar proxy (UUP) ${dir(fac.usd)}`]; if (P.QQQ) pParts.push(`Nasdaq ${dir(fac.risk)} (risk appetite)`);
   let macro = 0, macroText, macroSrc;
   if (AVm) {
@@ -526,7 +532,7 @@ async function getSeries(symbol, interval, size) {
   if (!Array.isArray(j.rows) || j.rows.length < 30) throw new Error("Not enough candles returned");
   return j.rows;
 }
-const COTSIGN = { XAUUSD: 1, USDJPY: -1, GBPUSD: 1, BTCUSD: 1, NASDAQ: 1 };
+const COTSIGN = { XAUUSD: 1, USDJPY: -1, BTCUSD: 1 };
 function macroScore(m) {
   if (!m) return null;
   const parts = []; let H = 0, w = 0;
@@ -540,7 +546,7 @@ function macroScore(m) {
   if (m.nfp && m.nfp.length >= 8) { const ch = i => m.nfp[i].v - m.nfp[i + 1].v, prev = [1, 2, 3, 4, 5, 6].map(ch), z = (ch(0) - mean(prev)) / (sd(prev) || 1); H += 0.15 * Math.tanh(z / 2); w += 0.15; parts.push(`payroll growth ${z > 0.5 ? "stronger than" : z < -0.5 ? "weaker than" : "in line with"} its 6-month pace`); }
   return w ? { H: H / w, w, parts } : null;
 }
-const DRVPAIRS = ["GBPUSD", "USDJPY"];
+const DRVPAIRS = ["USDJPY"];
 async function loadFeeds(key) {
   const out = { errs: [] }, oc = OPT[key];
   const grab = async (name, path, fn, ms) => {
@@ -993,8 +999,8 @@ function initAssistant() {
 const sgnOf = d => { d = String(d || "").toUpperCase(); return d === "BUY" ? 1 : d === "SELL" ? -1 : 0; };
 const hm = t => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const rel = ms => { const m = Math.round(ms / 60000), a = Math.abs(m), t = a < 60 ? a + "m" : a < 1440 ? Math.floor(a / 60) + "h " + (a % 60) + "m" : Math.floor(a / 1440) + "d " + Math.floor((a % 1440) / 60) + "h " + (a % 60) + "m"; return m < 0 ? t + " ago" : t; };
-const CTRY = { USD: "US", GBP: "UK", JPY: "JP" };
-const REL = { USD: ["XAUUSD", "USDJPY", "GBPUSD", "BTCUSD", "NASDAQ"], GBP: ["GBPUSD"], JPY: ["USDJPY"] };
+const CTRY = { USD: "US", JPY: "JP" };
+const REL = { USD: ["XAUUSD", "USDJPY", "BTCUSD"], JPY: ["USDJPY"] };
 function evTag(t) {
   if (/cpi|inflation|ppi|pce|price/i.test(t)) return "Inflation";
   if (/non-farm|nonfarm|employment|unemployment|payroll|jobless|claims|adp|jobs/i.test(t)) return "Jobs";
@@ -1015,7 +1021,7 @@ async function loadCal() {
 function renderCal() {
   if (!calData) return;
   const now = Date.now(); calShown = (calData.events || []).filter(x => x.t > now - 3 * 3600000).slice(0, 30);
-  if (!calShown.length) { $("#calList").innerHTML = `<p class="note">No high or medium impact USD, GBP or JPY news in the feed right now.</p>`; return; }
+  if (!calShown.length) { $("#calList").innerHTML = `<p class="note">No high or medium impact USD or JPY news in the feed right now.</p>`; return; }
   $("#calList").innerHTML = calShown.map((x, i) => {
     const u = new Date(x.t), k = evKey(x), done = !!calCache[k] && !calCache[k].loading;
     const utc = u.toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "UTC", hour12: false }).replace(",", " at");
@@ -1053,7 +1059,7 @@ function resultHTML(x, r, meta) {
 }
 /* ---------- predictions and scorecard ---------- */
 let preds = [], scoring = false;
-const RX_THR = { XAUUSD: 0.10, USDJPY: 0.08, GBPUSD: 0.08, BTCUSD: 0.25, NASDAQ: 0.10 };
+const RX_THR = { XAUUSD: 0.10, USDJPY: 0.08, BTCUSD: 0.25 };
 function parseVal(v) { const m = String(v || "").replace(/[,\s%$]/g, "").match(/^(-?\d+(?:\.\d+)?)([kmbt])?$/i); if (!m) return null; return parseFloat(m[1]) * ({ k: 1e3, m: 1e6, b: 1e9, t: 1e12 }[(m[2] || "").toLowerCase()] || 1); }
 function callsFor(x, r) {
   const o = r.odds || {}, below = +o.below || 0, match = +o.match || 0, above = +o.above || 0, tot = below + match + above || 100, R = r.reactions || {};
@@ -1281,14 +1287,91 @@ async function maybeAuto(key) {
   try { const r = await api("/api/trade/order", { method: "POST", body: JSON.stringify({ pair: key, side: A.verdict, volume: t.vol, sl: A.plan.sl, tp: A.plan.tp1 }) }); note(`sent ${r.side} ${r.volume} lot`); try { await addLog(A, true); } catch {} tradeInfo = null; loadTrade(); }
   catch (e) { note("not sent: " + (e.message || "error")); }
 }
+/* ---------- scalping bot (the Expert Advisor on your VPS trades; this tab controls it) ---------- */
+let botInfo = null, botTimer = null;
+const botMoney = x => (x < 0 ? "-$" : "$") + Math.abs(+x || 0).toFixed(2);
+function startBot() { loadBot(); if (!botTimer) botTimer = setInterval(() => { if (location.hash === "#bot" && !document.hidden) loadBot(); }, 8000); }
+function stopBot() { if (botTimer) { clearInterval(botTimer); botTimer = null; } }
+async function loadBot() {
+  const box = $("#botLive"); if (!botInfo) box.innerHTML = `<div class="card"><p class="status">Loading the bot…</p></div>`;
+  try { botInfo = await api("/api/bot"); }
+  catch (e) { if (e.locked) { showUnlock(); box.innerHTML = `<div class="card"><p class="status err">Enter your access code first.</p></div>`; return; } box.innerHTML = `<div class="card"><p class="status err">${esc(e.message || "Could not load the bot")}</p></div>`; return; }
+  renderBot(); if (!$("#botSet").firstChild) buildBotSettings();
+}
+async function botSend(patch, msgEl) {
+  try { const r = await api("/api/bot/config", { method: "POST", body: JSON.stringify(patch) }); if (r && r.ok === false) throw new Error(r.error || "Not saved"); if (msgEl) { msgEl.className = "status"; msgEl.textContent = "Saved."; } await loadBot(); return true; }
+  catch (e) { if (msgEl) { msgEl.className = "status err"; msgEl.textContent = e.message || "Not saved"; } else alert(e.message || "Not saved"); return false; }
+}
+function renderBot() {
+  const B = botInfo, c = B.cfg, t = B.tel, box = $("#botLive");
+  const eq = t && t.eq || 0, on = !!c.enabled, halted = t && t.halted;
+  const conn = B.connected ? `<span class="chip buy">EA connected</span>` : `<span class="chip sell">EA not connected${B.lastSeenSec != null ? " · " + B.lastSeenSec + "s ago" : ""}</span>`;
+  const views = B.pairs.map(sym => {
+    const v = B.views[sym], p = B.preview[sym], cls = !v ? "wait" : v.dir === "BUY" ? "buy" : v.dir === "SELL" ? "sell" : "wait";
+    return `<div class="bot-pair"><div class="bot-row"><b>${esc(B.names[sym] || sym)}</b><span class="chip ${cls}">${v ? v.dir : "WAIT"}</span><span class="r">score ${v ? v.score : 0}</span>${c.pairs.includes(sym) ? "" : `<span class="note">(off)</span>`}</div>
+      <p class="note">${esc(v ? v.reason : "waiting for prices")}</p>
+      ${p ? `<p class="note">At ${eq > 0 ? botMoney(eq) : "this"} equity: up to ${p.allowed} of ${p.want} positions fit the ${c.riskCap}% risk limit (about ${botMoney(p.riskPerPos)} risked each at the current lot).</p>` : ""}</div>`;
+  }).join("");
+  const pos = t && t.open && t.open.length ? t.open.map(o => `<div class="bot-row"><b>${esc(o.sym)}</b><span class="${o.dir === "BUY" ? "buy" : "sell"}">${esc(o.dir)}</span><span class="note">${(+o.vol).toFixed(2)} lot${o.armed ? " · trailing" : ""}</span><span class="r ${o.profit >= 0 ? "buy" : "sell"}">${botMoney(o.profit)}</span></div>`).join("") : `<p class="note">No open bot positions.</p>`;
+  const cyc = B.cycles.length ? B.cycles.map(x => `<div class="bot-row"><b>${esc(B.names[x.sym] || x.sym)}</b><span class="${x.dir === "BUY" ? "buy" : "sell"}">${esc(x.dir)}</span><span class="note">${x.n} × ${(+x.lots).toFixed(2)}</span><span class="r ${x.net >= 0 ? "buy" : "sell"}">${x.net >= 0 ? "+" : ""}${botMoney(x.net)}</span></div>`).join("") : `<p class="note">No finished stacks yet.</p>`;
+  const S = B.stats;
+  box.innerHTML = `
+    <div class="card" style="margin-bottom:10px"><p class="eyebrow">Scalping bot</p>
+      <div class="bot-row" style="margin:6px 0">${conn}<span class="chip ${on ? "buy" : "wait"}">${on ? "Bot ON" : "Bot OFF"}</span>${halted ? `<span class="chip sell">stopped</span>` : ""}</div>
+      <p class="note">${esc(halted || (t && t.status) || (B.connected ? "waiting" : "Start the Expert Advisor on the VPS (steps below)."))}</p>
+      <div class="actions"><button class="btn primary" id="boOn" type="button">${on ? "Stop the bot" : "Start the bot"}</button><button class="btn danger" id="boClose" type="button">Close all bot trades</button><button class="btn" id="boReset" type="button">Reset lot and safety stop</button></div>
+      <p class="status" id="boMsg" role="status"></p>
+      <p class="foot">Stopping only prevents new stacks. Positions already open keep their stop and trailing.</p></div>
+    <dl class="stats" style="margin-bottom:10px">
+      <div class="stat"><dt>Equity</dt><dd>${eq ? botMoney(eq) : "–"}</dd></div>
+      <div class="stat"><dt>Lot now</dt><dd>${(+B.lot || 0).toFixed(2)}</dd></div>
+      <div class="stat"><dt>Positions</dt><dd>${B.posTarget}</dd></div>
+      <div class="stat"><dt>Stacks</dt><dd>${S.n}</dd></div>
+      <div class="stat"><dt>Win rate</dt><dd>${S.n ? S.hit + "%" : "–"}</dd></div>
+      <div class="stat"><dt>Net</dt><dd class="${S.net >= 0 ? "buy" : "sell"}">${botMoney(S.net)}</dd></div></dl>
+    <div class="card bot-warn" style="margin-bottom:10px"><p class="note" style="color:inherit"><b>Unproven.</b> A scalper needs most of its stacks to win, and nobody has tested this bot on live prices yet. Run it on a <b>demo account first</b>. On a very small balance the risk limit allows only a few positions (and on gold, often just one).</p></div>
+    <div class="card" style="margin-bottom:10px"><p class="eyebrow">Analysts now</p>${views}</div>
+    <div class="card" style="margin-bottom:10px"><p class="eyebrow">Open bot positions</p>${pos}</div>
+    <div class="card" style="margin-bottom:10px"><p class="eyebrow">Recent stacks</p>${cyc}</div>`;
+  const msg = $("#boMsg");
+  $("#boOn").onclick = () => botSend({ enabled: !on }, msg);
+  twoTap($("#boClose"), () => botSend({ closeAll: true }, msg));
+  $("#boReset").onclick = () => botSend({ resetLot: true }, msg);
+}
+function buildBotSettings() {
+  const B = botInfo, c = B.cfg, F = B.fields, set = $("#botSet");
+  const fields = Object.keys(F).map(k => `<div class="field"><label for="bo_${k}">${esc(F[k].label)}</label><input class="inp mono" id="bo_${k}" data-k="${k}" type="number" inputmode="decimal" min="${F[k].lo}" max="${F[k].hi}" step="${F[k].step}" value="${c[k]}"><small>${esc(F[k].hint)}</small></div>`).join("");
+  const pairs = B.pairs.map(s => `<label class="check"><input type="checkbox" data-p="${s}" ${c.pairs.includes(s) ? "checked" : ""}>${esc(B.names[s] || s)}</label>`).join("");
+  set.innerHTML = `<div class="card bot-cfg"><p class="eyebrow">Settings</p>
+    <div class="bot-row" style="margin:8px 0">${pairs}</div>
+    <div class="fields">${fields}</div>
+    <div style="display:grid;gap:8px;margin-top:10px"><label class="check"><input type="checkbox" id="bo_closeOnStop" ${c.closeOnStop ? "checked" : ""}>Close everything when a safety stop triggers</label><label class="check"><input type="checkbox" id="bo_news" ${c.news ? "checked" : ""}>Pause new stacks around major news</label></div>
+    <div class="actions"><button class="btn primary" id="boSave" type="button">Save settings</button></div><p class="status" id="boSaveMsg" role="status"></p></div>
+    <div class="card" style="margin-top:10px"><p class="eyebrow">How it works</p>
+      <ol class="steps"><li>The five analysts (trend, bigger picture, momentum, structure, news) score each pair from broker prices from −100 to 100. When the score passes the minimum, a stack opens.</li>
+      <li>A stack is several equal positions opened together. Each has its own stop. At about 50 cents of profit per 0.01 lot a position starts trailing and closes when the price turns back.</li>
+      <li>When a whole stack ends in profit the lot goes up by 0.02; after a loss it goes down by 0.01. One more position is added for each $20 the account grows.</li>
+      <li>The Expert Advisor on your Virtarix server does the trading and trailing itself, so open trades stay protected even if this server sleeps.</li></ol></div>
+    <div class="card" style="margin-top:10px"><p class="eyebrow">Connect the Expert Advisor</p>
+      <ol class="steps"><li>In Render, open Chloe2, then Environment, add <code>EA_KEY</code> with any long secret, and save.</li>
+      <li>On the VPS, in MT5 open Tools, Options, Expert Advisors, tick Allow WebRequest and add <code>https://chloe2.onrender.com</code>.</li>
+      <li>Compile <code>ChloeEA5.mq5</code> in MetaEditor, put it on one chart, and set <code>InpServerUrl</code> to <code>https://chloe2.onrender.com</code> and <code>InpEAKey</code> to your EA_KEY. Symbol ending stays <code>m</code>.</li>
+      <li>Switch on Algo Trading. This tab shows <b>EA connected</b> within seconds. Then tap Start the bot.</li></ol>${B.configured && B.configured.ea_key ? "" : `<p class="status err">EA_KEY is not set on the server yet.</p>`}</div>`;
+  $("#boSave").onclick = () => {
+    const o = { pairs: [...set.querySelectorAll("[data-p]")].filter(x => x.checked).map(x => x.dataset.p), closeOnStop: $("#bo_closeOnStop").checked, news: $("#bo_news").checked };
+    set.querySelectorAll("input[data-k]").forEach(i => { o[i.dataset.k] = parseFloat(i.value); });
+    botSend(o, $("#boSaveMsg"));
+  };
+}
 /* ---------- navigation ---------- */
-const VIEWS = ["signal", "events", "assistant", "auto", "log"];
+const VIEWS = ["signal", "events", "assistant", "auto", "bot", "log"];
 function go(v) { if (location.hash !== "#" + v) location.hash = v; else show(); }
 function show() {
   const v = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "signal";
   VIEWS.forEach(n => $("#v-" + n).classList.toggle("on", n === v));
   if (v === "events" && !calData) loadCal(); else if (v === "events") renderCal();
   if (v === "log") checkTrades();
+  if (v === "bot") startBot(); else stopBot();
   if (v === "auto") { if (!tradeInfo) loadTrade(); else renderAuto(); }
   document.querySelectorAll(".tab").forEach(t => t.toggleAttribute("aria-current", false) || (t.dataset.v === v ? t.setAttribute("aria-current", "page") : t.removeAttribute("aria-current")));
 }

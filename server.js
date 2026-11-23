@@ -4,6 +4,7 @@
    TWELVE_KEY, FRED_KEY, FINNHUB_KEY, AV_KEY (optional), LLM_KEY,
    UPSTASH_URL, UPSTASH_TOKEN, ACCESS_KEY (recommended),
    LLM_PROVIDER (gemini | anthropic, default gemini), LLM_MODEL (optional for gemini, required for anthropic).
+   Scalping bot (optional): EA_KEY (any long secret; type the same one into the Expert Advisor).
    Auto trading (optional): METAAPI_TOKEN, METAAPI_ACCOUNT_ID, METAAPI_REGION (default new-york), SYMBOL_SUFFIX, NAS_SYMBOL, MAX_LOT (default 0.05), MAX_POSITIONS (default 3) */
 const http = require("http");
 const fs = require("fs");
@@ -47,7 +48,7 @@ function readBody(req, limit = 200000) {
 }
 
 /* ---------- candles: Twelve Data ---------- */
-const SYMBOLS = new Set(["XAU/USD", "USD/JPY", "GBP/USD", "BTC/USD", "QQQ", "UUP"]);
+const SYMBOLS = new Set(["XAU/USD", "USD/JPY", "BTC/USD", "QQQ", "UUP"]);
 const INTERVALS = new Set(["15min", "1h", "4h", "1day"]);
 function series(symbol, interval, size, tz) {
   if (!SYMBOLS.has(symbol) || !INTERVALS.has(interval)) throw new Error("Unsupported symbol or interval");
@@ -77,9 +78,7 @@ function macro() {
 const COT = {
   XAUUSD: { kw: "GOLD", pick: [/^GOLD - COMMODITY EXCHANGE/, /^GOLD/] },
   USDJPY: { kw: "JAPANESE YEN", pick: [/^JAPANESE YEN - CHICAGO MERCANTILE/, /^JAPANESE YEN/] },
-  GBPUSD: { kw: "BRITISH POUND", pick: [/^BRITISH POUND - CHICAGO MERCANTILE/, /^BRITISH POUND/] },
-  BTCUSD: { kw: "BITCOIN", pick: [/^BITCOIN - CHICAGO MERCANTILE/, /^BITCOIN/] },
-  NASDAQ: { kw: "NASDAQ", pick: [/^NASDAQ MINI/, /^NASDAQ-100 STOCK INDEX \(MINI\)/, /^NASDAQ/] }
+  BTCUSD: { kw: "BITCOIN", pick: [/^BITCOIN - CHICAGO MERCANTILE/, /^BITCOIN/] }
 };
 const CFTC = "https://publicreporting.cftc.gov/resource/6dca-aqww.json";
 function cot(pair) {
@@ -104,7 +103,7 @@ function cot(pair) {
 
 /* ---------- options put/call ratio: Alpha Vantage (optional) ---------- */
 const OPT_SYMBOLS = new Set(["GLD", "QQQ", "IBIT", "UUP"]);
-const SECRETS = ["TWELVE_KEY", "FRED_KEY", "FINNHUB_KEY", "AV_KEY", "LLM_KEY", "UPSTASH_URL", "UPSTASH_TOKEN", "METAAPI_TOKEN", "ACCESS_KEY"];
+const SECRETS = ["TWELVE_KEY", "FRED_KEY", "FINNHUB_KEY", "AV_KEY", "LLM_KEY", "UPSTASH_URL", "UPSTASH_TOKEN", "METAAPI_TOKEN", "ACCESS_KEY", "EA_KEY"];
 function scrub(msg) {
   let t = String(msg || "");
   for (const k of SECRETS) { const v = E[k]; if (v && v.length >= 6) t = t.split(v).join("***"); }
@@ -185,7 +184,7 @@ function parseLoose(t) {
 }
 
 /* ---------- news tone: Finnhub headlines scored by the AI ---------- */
-const NAMES = { XAUUSD: "Gold (XAUUSD)", USDJPY: "the US dollar against the Japanese yen (USDJPY)", GBPUSD: "the British pound against the US dollar (GBPUSD)", BTCUSD: "Bitcoin (BTCUSD)", NASDAQ: "the Nasdaq-100 index" };
+const NAMES = { XAUUSD: "Gold (XAUUSD)", USDJPY: "the US dollar against the Japanese yen (USDJPY)", BTCUSD: "Bitcoin (BTCUSD)" };
 function sentiment(pair) {
   if (!NAMES[pair]) throw new Error("Unknown pair");
   return cached("sent|" + pair, 20 * 60000, async () => {
@@ -213,7 +212,7 @@ async function upstash(cmd) {
 
 /* ---------- economic calendar: free weekly feed, saved copy, then AI web search as backup ---------- */
 const FF_HOSTS = ["https://nfs.faireconomy.media", "https://cdn-nfs.faireconomy.media"];
-const CAL_CUR = ["USD", "GBP", "JPY"];
+const CAL_CUR = ["USD", "JPY"];
 let calMem = null, calFFFail = 0;
 function normEvents(list) {
   return (Array.isArray(list) ? list : []).filter(x => x && x.title && (x.date || x.time))
@@ -265,8 +264,8 @@ async function fredCalendar() {
 }
 async function aiCalendar() {
   const now = new Date(), prompt = `You are an economic calendar researcher. Today is ${now.toUTCString()}.
-Search the web for the high and medium impact economic events scheduled from now until 7 days ahead for the United States (USD), United Kingdom (GBP) and Japan (JPY). Include inflation (CPI, PPI), jobs (payrolls, unemployment, jobless claims), central bank rate decisions and speeches (Fed, BOE, BOJ), GDP, retail sales and PMIs. Use the official or consensus release times.
-Reply with only a JSON array, no markdown. Each item: {"title":"","country":"USD|GBP|JPY","impact":"High|Medium","time":"ISO 8601 UTC like 2026-11-12T13:30:00Z","forecast":"","previous":""}. Leave forecast or previous empty if unknown. Never invent an event you could not find.`;
+Search the web for the high and medium impact economic events scheduled from now until 7 days ahead for the United States (USD) and Japan (JPY). Include inflation (CPI, PPI), jobs (payrolls, unemployment, jobless claims), central bank rate decisions and speeches (Fed, BOJ), GDP, retail sales and PMIs. Use the official or consensus release times.
+Reply with only a JSON array, no markdown. Each item: {"title":"","country":"USD|JPY","impact":"High|Medium","time":"ISO 8601 UTC like 2026-11-12T13:30:00Z","forecast":"","previous":""}. Leave forecast or previous empty if unknown. Never invent an event you could not find.`;
   const meta = {}, text = await llm([{ role: "user", content: prompt }], { json: true, search: true, maxTokens: 4000, meta });
   const events = normEvents(parseLoose(text)).filter(x => x.t > Date.now() - 3 * 3600000 && x.t < Date.now() + 8 * 86400000);
   if (!events.length) throw new Error("The AI search found no events");
@@ -294,7 +293,7 @@ async function calendar() {
 }
 
 /* ---------- auto trading through MetaApi (optional) ---------- */
-const MT_SYM = { XAUUSD: "XAUUSD", USDJPY: "USDJPY", GBPUSD: "GBPUSD", BTCUSD: "BTCUSD", NASDAQ: E.NAS_SYMBOL || "USTEC" };
+const MT_SYM = { XAUUSD: "XAUUSD", USDJPY: "USDJPY", BTCUSD: "BTCUSD" };
 const mtSymbol = pair => { if (!MT_SYM[pair]) throw new Error("Unknown pair"); return MT_SYM[pair] + (E.SYMBOL_SUFFIX || ""); };
 const MAX_LOT = parseFloat(E.MAX_LOT) > 0 ? parseFloat(E.MAX_LOT) : 0.05;
 const MAX_POS = parseInt(E.MAX_POSITIONS, 10) > 0 ? parseInt(E.MAX_POSITIONS, 10) : 3;
@@ -319,7 +318,6 @@ async function tradeStatus() {
 const recent = new Map();
 async function placeOrder(b) {
   const side = String(b.side || "").toUpperCase(), symbol = mtSymbol(b.pair), vol = Math.round(parseFloat(b.volume) * 100) / 100, sl = parseFloat(b.sl), tp = parseFloat(b.tp);
-  if (b.pair === "NASDAQ") throw new Error("Nasdaq has no lot sizing yet, so it is switched off for auto trading");
   if (!["BUY", "SELL"].includes(side)) throw new Error("Side must be BUY or SELL");
   if (!(vol >= 0.01)) throw new Error("Lot must be at least 0.01");
   if (vol > MAX_LOT) throw new Error(`Lot ${vol} is above the server cap of ${MAX_LOT}. Raise MAX_LOT in Render if you really want that.`);
@@ -375,14 +373,14 @@ async function research(ev) {
   const agents = rs.map((r, i) => ({ name: AGENTS[i][0], ok: r.status === "fulfilled", note: r.status === "fulfilled" ? String(r.value).trim().slice(0, 700) : "Search failed: " + scrub(String(r.reason && r.reason.message || "")).slice(0, 90) }));
   if (!agents.some(a => a.ok)) throw new Error(agents[0].note);
   const seen = new Set(), sources = []; for (const m of metas) for (const x of (m.sources || [])) if (!seen.has(x.url) && sources.length < 6) { seen.add(x.url); sources.push(x); }
-  const pairs = "XAUUSD (Gold), USDJPY, GBPUSD, BTCUSD (Bitcoin), NASDAQ (Nasdaq-100)";
+  const pairs = "XAUUSD (Gold), USDJPY, BTCUSD (Bitcoin)";
   const chair = `You are the chair of a macro research desk. Today is ${new Date().toUTCString()}.
 Event: ${evText}.
 ${hist ? "Official data history (calculated, trust these numbers): " + hist : "No official history numbers were available for this event."}
 Research notes from four analysts:
 ${agents.map(a => `- ${a.name}: ${a.note}`).join("\n")}
 Combine all of this. Estimate the chance the actual figure comes in below, in line with, or above the forecast (integers summing to 100). Lean on the official history and the analysts' facts, not on guesses. If the notes disagree or key facts are missing, lower your confidence and keep the odds closer to even. Then say how each pair usually reacts in each case: ${pairs}. Keep every "why" under 16 words.
-Reply with only JSON, no markdown: {"forecast":"","previous":"","odds":{"below":0,"match":0,"above":0},"summary":"one or two sentences","drivers":["up to 4 short findings"],"confidence":{"level":"low|medium|high","why":"one short sentence"},"reactions":{"XAUUSD":{"below":{"dir":"BUY|SELL|CHOP","why":""},"match":{"dir":"","why":""},"above":{"dir":"","why":""}}}} with an entry for each of: XAUUSD, USDJPY, GBPUSD, BTCUSD, NASDAQ.`;
+Reply with only JSON, no markdown: {"forecast":"","previous":"","odds":{"below":0,"match":0,"above":0},"summary":"one or two sentences","drivers":["up to 4 short findings"],"confidence":{"level":"low|medium|high","why":"one short sentence"},"reactions":{"XAUUSD":{"below":{"dir":"BUY|SELL|CHOP","why":""},"match":{"dir":"","why":""},"above":{"dir":"","why":""}}}} with an entry for each of: XAUUSD, USDJPY, BTCUSD.`;
   const text = await llm([{ role: "user", content: chair }], { json: true, maxTokens: 3000 });
   return { text, sources, agents, history: hist, searched: metas.some(m => (m.sources || []).length > 0) };
 }
@@ -390,8 +388,6 @@ Reply with only JSON, no markdown: {"forecast":"","previous":"","odds":{"below":
 
 /* ---------- pair drivers: what GBPUSD and USDJPY actually react to ---------- */
 const DRV = {
-  GBPUSD: { home: "UK", bank: "Bank of England", cur: "GBP", yld: "IRLTLT01GBM156N", rate: "IR3TIB01GBM156N",
-    focus: "UK inflation and wage data, Bank of England rate path and vote split, UK gilt yields against US Treasuries, UK growth and politics or budget news, the dollar's own trend" },
   USDJPY: { home: "Japan", bank: "Bank of Japan", cur: "JPY", yld: "IRLTLT01JPM156N", rate: "IR3TIB01JPM156N",
     focus: "Bank of Japan policy path and any hint of a hike, the US-Japan 10-year yield gap, Japan's Ministry of Finance comments or intervention in the yen, Japan inflation, risk sentiment (yen is a safe haven)" }
 };
@@ -420,14 +416,14 @@ async function drivers(pair) {
     const notes = rs.map((r, i) => r.status === "fulfilled" ? `- ${asks[i][0]}: ${String(r.value).trim().slice(0, 700)}` : null).filter(Boolean);
     if (!notes.length) throw new Error(String(rs[0].reason && rs[0].reason.message || "Research failed"));
     const seen = new Set(), sources = []; for (const m of metas) for (const x of (m.sources || [])) if (!seen.has(x.url) && sources.length < 5) { seen.add(x.url); sources.push(x); }
-    const up = pair === "GBPUSD" ? "GBP gaining on the dollar" : "the dollar gaining on the yen";
+    const up = "the dollar gaining on the yen";
     const chair = `You are the currency desk analyst for ${pair}. Today is ${new Date().toUTCString()}.
 Official data (calculated, trust it): ${facts.join(" ") || "none available"}
 Research notes:
 ${notes.join("\n")}
 Score what is pushing ${pair} over the next 1 to 3 days. Positive means ${pair} rises (${up}), negative means it falls. Each score is from -1 to 1. If facts are missing, use 0 for that part.
 Reply with only JSON: {"policy":0,"economy":0,"flows":0,"home_stance":"hawkish|neutral|dovish","us_stance":"hawkish|neutral|dovish","intervention":"none|watch|high","summary":"two short sentences on what the pair wants right now","drivers":["up to 3 short findings"],"confidence":"low|medium|high"}
-policy = rate path and central bank gap. economy = inflation, growth, jobs and yield gap. flows = risk sentiment, safe-haven demand, intervention or political risk. intervention only matters for USDJPY (use "none" for GBPUSD).`;
+policy = rate path and central bank gap. economy = inflation, growth, jobs and yield gap. flows = risk sentiment, safe-haven demand, intervention or political risk. intervention only matters for USDJPY.`;
     const o = parseLoose(await llm([{ role: "user", content: chair }], { json: true, maxTokens: 1500 }));
     if (!o || typeof o !== "object") throw new Error("Unreadable driver research");
     const c = v => Math.max(-1, Math.min(1, Number(v) || 0));
@@ -437,6 +433,44 @@ policy = rate path and central bank gap. economy = inflation, growth, jobs and y
       intervention: pair === "USDJPY" && ["watch", "high"].includes(o.intervention) ? o.intervention : "none", summary: String(o.summary || "").slice(0, 400),
       drivers: (Array.isArray(o.drivers) ? o.drivers : []).slice(0, 3).map(x => String(x).slice(0, 140)), confidence: ["low", "medium", "high"].includes(o.confidence) ? o.confidence : "low", facts, sources, at: Date.now() };
   });
+}
+
+
+/* ---------- scalping bot: the Expert Advisor on the VPS trades, this server analyses and keeps the settings ---------- */
+const BOT_TFS = new Set(["M1", "M5", "M15", "H1", "H4"]), BOT_SYMS = new Set(["XAUUSD", "USDJPY", "BTCUSD"]), brokerCs = {};
+function brokerGet(sym, tf, maxAgeSec) { const b = brokerCs[sym + "|" + tf]; return b && b.cs.length >= 70 && Date.now() - b.at < maxAgeSec * 1000 ? b.cs : null; }
+function brokerPut(sym, tf, rows) {
+  if (!BOT_SYMS.has(sym) || !BOT_TFS.has(tf) || !Array.isArray(rows)) return { ok: false, error: "bad symbol, timeframe or rows" };
+  const cs = rows.slice(-600).map(r => ({ t: String(r[0]).slice(0, 19).replace("T", " "), o: +r[1], h: +r[2], l: +r[3], c: +r[4] })).filter(c => /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(c.t) && [c.o, c.h, c.l, c.c].every(Number.isFinite) && c.h >= c.l);
+  if (cs.length < 70) return { ok: false, error: "need at least 70 good candles, got " + cs.length };
+  cs.sort((a, b) => a.t < b.t ? -1 : 1); brokerCs[sym + "|" + tf] = { at: Date.now(), cs }; return { ok: true, n: cs.length };
+}
+const botState = {}; let botHash = "", botLastSave = 0, botTimer = null;
+async function botSave() {
+  const b = botState.bot; if (!b || !(E.UPSTASH_URL && E.UPSTASH_TOKEN)) return;
+  const txt = JSON.stringify({ cfg: b.cfg, cycles: b.cycles, seen: b.seen, notes: b.notes });
+  if (txt === botHash) return;
+  const wait = 15000 - (Date.now() - botLastSave);
+  if (wait > 0) { if (!botTimer) botTimer = setTimeout(() => { botTimer = null; botSave().catch(() => {}); }, wait); return; }
+  botLastSave = Date.now(); botHash = txt;
+  try { await upstash(["SET", "chloe2:bot", txt]); } catch { botHash = ""; }
+}
+const botBias = async pair => { const s = await sentiment(pair); return s.score > 0.25 ? "bullish" : s.score < -0.25 ? "bearish" : "neutral"; };
+const inBlackout = () => { const n = Date.now(); return !!(calMem && calMem.events && calMem.events.some(x => x.impact === "High" && n > x.t - 10 * 60000 && n < x.t + 10 * 60000)); };
+const BOT = require("./bot.js")({ state: botState, saveState: botSave, telegram: () => {}, E, ENV: E, brokerGet, biasFor: botBias, inBlackout, paused: () => false });
+BOT.init();
+(async () => {
+  if (E.UPSTASH_URL && E.UPSTASH_TOKEN) { try { const r = await upstash(["GET", "chloe2:bot"]); if (r) { const o = JSON.parse(r); botState.bot = { cfg: o.cfg || {}, cycles: o.cycles || [], seen: o.seen || [], notes: o.notes || {} }; BOT.init(); } } catch {} }
+  if (E.EA_KEY) setInterval(() => { calendar().catch(() => {}); }, 30 * 60000), calendar().catch(() => {});
+})();
+async function eaRoute(req, res, p) {
+  let b = null; try { b = await readBody(req, 600000); } catch {}
+  if (!E.EA_KEY || !b || !b.key || !same(b.key, E.EA_KEY)) return send(res, 403, "DENIED", "text/plain");
+  if (p === "/ea/candles") return send(res, 200, brokerPut(String(b.sym || "").toUpperCase(), String(b.tf || "").toUpperCase(), b.rows));
+  try { BOT.ingest(b); } catch (e) { console.log("bot ingest: " + e.message); }
+  let text = "OK"; try { text += "\n" + (await BOT.lines()).join("\n"); } catch (e) { console.log("bot lines: " + e.message); }
+  botSave().catch(() => {});
+  return send(res, 200, text, "text/plain");
 }
 
 /* ---------- routes ---------- */
@@ -454,6 +488,8 @@ async function api(req, res, u) {
   if (p === "/api/sentiment") return send(res, 200, await sentiment(q.get("pair")));
   if (p === "/api/drivers") return send(res, 200, await drivers(q.get("pair")));
   if (p === "/api/calendar") return send(res, 200, await calendar());
+  if (p === "/api/bot" && req.method === "GET") return send(res, 200, BOT.status());
+  if (p === "/api/bot/config" && req.method === "POST") return send(res, 200, await BOT.setConfig(await readBody(req)));
   if (p === "/api/trade/status") return send(res, 200, await tradeStatus());
   if (p === "/api/trade/order" && req.method === "POST") return send(res, 200, await placeOrder(await readBody(req)));
   if (p === "/api/trade/close" && req.method === "POST") { const b = await readBody(req); if (!b.id) throw new Error("No position id"); return send(res, 200, await closePosition(b.id)); }
@@ -470,7 +506,7 @@ async function api(req, res, u) {
   }
   if (p === "/api/research" && req.method === "POST") {
     const b = await readBody(req), t = +b.t;
-    if (typeof b.title !== "string" || b.title.length > 90 || !["USD", "GBP", "JPY"].includes(b.cur) || !Number.isFinite(t)) throw new Error("Bad event");
+    if (typeof b.title !== "string" || b.title.length > 90 || !["USD", "JPY"].includes(b.cur) || !Number.isFinite(t)) throw new Error("Bad event");
     return send(res, 200, await research({ title: b.title, cur: b.cur, impact: String(b.impact || "").slice(0, 10), t, forecast: String(b.forecast || "").slice(0, 20), previous: String(b.previous || "").slice(0, 20) }));
   }
   if (p === "/api/preds") {
@@ -497,6 +533,7 @@ http.createServer(async (req, res) => {
   const u = new URL(req.url, "http://localhost");
   try {
     if (u.pathname === "/health") return send(res, 200, "ok", "text/plain");
+    if ((u.pathname === "/ea/poll" || u.pathname === "/ea/candles") && req.method === "POST") return await eaRoute(req, res, u.pathname);
     if (u.pathname.startsWith("/api/")) return await api(req, res, u);
     return serveStatic(res, u.pathname);
   } catch (e) {
