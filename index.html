@@ -722,12 +722,58 @@ function renderPlan() {
   $("#saveBtn").onclick = async () => { const ok = await addLog(A); $("#saveMsg").textContent = ok ? "Saved to your log." : "Could not save."; };
   $("#askBtn").onclick = () => { go("assistant"); send(`Walk me through this ${pair} ${A.verdict} signal. What would make you skip it?`); };
 }
-let chartCfg = Object.assign({ tf: "h1", type: "candle", lv: true, plan: true, ema: true, mv: true }, store.get("c2.chart", null) || {});
+let chartCfg = Object.assign({ tf: "h1", type: "candle", lv: true, plan: true, ema: true, mv: true, fvg: true, ob: true, imb: false, idm: true }, store.get("c2.chart", null) || {});
 if (!["m15", "h1", "h4", "d1"].includes(chartCfg.tf)) chartCfg.tf = "h1";
 const TFN = { m15: "M15", h1: "H1", h4: "H4", d1: "D1" }, TFSHOW = { m15: 64, h1: 64, h4: 60, d1: 50 };
 const POOLS = { "previous-day high": "PDH", "previous-day low": "PDL", "5-day high": "5D H", "5-day low": "5D L", "Asia high": "Asia H", "Asia low": "Asia L" };
 let chartSel = null;
 const CW = 360, CH = 280, CPL = 4, CPR = 80, CPT = 10, CPB = 18, CFUT = 12;
+/* ---------- smart money zones: fair value gaps, order blocks, imbalances, inducement ---------- */
+function smcZones(all) {
+  const n = all.length, o = all.map(b => +b.o), h = all.map(b => +b.h), l = all.map(b => +b.l), c = all.map(b => +b.c);
+  if (n < 30) return { fvg: [], ob: [], imb: [], idm: [] };
+  const tr = all.map((b, i) => i ? Math.max(h[i] - l[i], Math.abs(h[i] - c[i - 1]), Math.abs(l[i] - c[i - 1])) : h[i] - l[i]);
+  const atr = tr.map((_, i) => { let t = 0, k = 0; for (let j = Math.max(0, i - 13); j <= i; j++) { t += tr[j]; k++; } return t / k; });
+  const fvg = [], imb = [], ob = [], P = c[n - 1];
+  // shrink or kill a gap once price trades back into it
+  const settle = (z, from) => { for (let k = from; k < n; k++) { if (z.dir > 0) { if (l[k] <= z.lo) return null; if (l[k] < z.hi) { z.hi = l[k]; z.touched = true; } } else { if (h[k] >= z.hi) return null; if (h[k] > z.lo) { z.lo = h[k]; z.touched = true; } } } return z; };
+  for (let i = 2; i < n; i++) {
+    const a = atr[i], b1t = Math.max(o[i - 1], c[i - 1]), b1b = Math.min(o[i - 1], c[i - 1]), b2t = Math.max(o[i], c[i]), b2b = Math.min(o[i], c[i]);
+    let z = null;
+    if (l[i] > h[i - 2] && l[i] - h[i - 2] >= .15 * a) z = { dir: 1, lo: h[i - 2], hi: l[i], i0: i - 1 };
+    else if (h[i] < l[i - 2] && l[i - 2] - h[i] >= .15 * a) z = { dir: -1, lo: h[i], hi: l[i - 2], i0: i - 1 };
+    if (z) { z = settle(z, i + 1); if (z) fvg.push(z); continue; }
+    let m = null;
+    if (b2b > b1t && l[i] <= h[i - 1] && b2b - b1t >= .1 * a) m = { dir: 1, lo: b1t, hi: b2b, i0: i - 1 };
+    else if (b2t < b1b && h[i] >= l[i - 1] && b1b - b2t >= .1 * a) m = { dir: -1, lo: b2t, hi: b1b, i0: i - 1 };
+    if (m) { m = settle(m, i + 1); if (m) imb.push(m); }
+  }
+  const seen = new Set();
+  for (let i = 12; i < n; i++) {
+    const body = c[i] - o[i], a = atr[i - 1]; if (Math.abs(body) < 1.5 * a) continue;
+    const dir = body > 0 ? 1 : -1; let brk = false;
+    if (dir > 0) { let mx = -Infinity; for (let k = i - 10; k < i; k++) mx = Math.max(mx, h[k]); brk = c[i] > mx; } else { let mn = Infinity; for (let k = i - 10; k < i; k++) mn = Math.min(mn, l[k]); brk = c[i] < mn; }
+    if (!brk) continue;
+    let j = -1; for (let k = i - 1; k >= Math.max(0, i - 6); k--) if ((dir > 0 && c[k] < o[k]) || (dir < 0 && c[k] > o[k])) { j = k; break; }
+    if (j < 0 || seen.has(j)) continue; seen.add(j);
+    const z = { dir, lo: l[j], hi: h[j], i0: j, touched: false }; let dead = false;
+    for (let k = i + 1; k < n; k++) { if (dir > 0 ? c[k] < z.lo : c[k] > z.hi) { dead = true; break; } if (dir > 0 ? l[k] <= z.hi : h[k] >= z.lo) z.touched = true; }
+    if (!dead) ob.push(z);
+  }
+  const near = (arr, k) => arr.slice().sort((a, b) => Math.abs((a.lo + a.hi) / 2 - P) - Math.abs((b.lo + b.hi) / 2 - P)).slice(0, k);
+  const fv = near(fvg, 4), im = near(imb, 3), obs = near(ob, 4);
+  // inducement: the unswept minor swing between price and the nearest zone, the liquidity that tends to be taken before the zone is reached
+  const sw = []; for (let i = Math.max(2, n - 70); i < n - 2; i++) {
+    if (h[i] > h[i - 1] && h[i] > h[i - 2] && h[i] > h[i + 1] && h[i] > h[i + 2]) sw.push({ i, v: h[i], hi: true });
+    if (l[i] < l[i - 1] && l[i] < l[i - 2] && l[i] < l[i + 1] && l[i] < l[i + 2]) sw.push({ i, v: l[i], hi: false });
+  }
+  const unswept = s => { for (let k = s.i + 1; k < n; k++) { if (s.hi ? h[k] > s.v : l[k] < s.v) return false; } return true; };
+  const zs = [...fv, ...obs], idm = [];
+  const below = zs.filter(z => z.dir > 0 && z.hi < P).sort((a, b) => b.hi - a.hi)[0], above = zs.filter(z => z.dir < 0 && z.lo > P).sort((a, b) => a.lo - b.lo)[0];
+  if (below) { const q = sw.filter(s2 => !s2.hi && s2.v > below.hi && s2.v < P && unswept(s2)).sort((a, b) => a.v - b.v)[0]; if (q) idm.push({ dir: 1, v: q.v, i0: q.i, to: below.hi }); }
+  if (above) { const q = sw.filter(s2 => s2.hi && s2.v < above.lo && s2.v > P && unswept(s2)).sort((a, b) => b.v - a.v)[0]; if (q) idm.push({ dir: -1, v: q.v, i0: q.i, to: above.lo }); }
+  return { fvg: fv, ob: obs, imb: im, idm };
+}
 function chartGeom(A) {
   const all = A.bars[chartCfg.tf] || A.bars.h1, n = TFSHOW[chartCfg.tf], bars = all.slice(-n), step = (CW - CPL - CPR) / (bars.length + CFUT);
   return { all, bars, step, x: i => CPL + (i + .5) * step };
@@ -739,7 +785,7 @@ function renderChart() {
   <div class="ctl">${Object.keys(TFN).map(k => cb("tf", k, TFN[k], c.tf === k)).join("")}<span class="sp"></span>${cb("type", "candle", "Candles", c.type === "candle")}${cb("type", "line", "Line", c.type === "line")}</div>
   <p class="note" id="chartRead" style="min-height:18px;margin:0 0 4px;font-family:var(--font-mono);font-size:12px">Tap a candle to see its prices</p>
   ${chartSVG(A)}
-  <div class="ctl" style="margin:8px 0 0">${cb("lv", "toggle", "Liquidity", c.lv)}${cb("plan", "toggle", "Entry, stop, targets", c.plan)}${cb("ema", "toggle", "Trend lines", c.ema)}${cb("mv", "toggle", "Expected move", c.mv)}</div>
+  <div class="ctl" style="margin:8px 0 0">${cb("lv", "toggle", "Liquidity", c.lv)}${cb("plan", "toggle", "Entry, stop, targets", c.plan)}${cb("ema", "toggle", "Trend lines", c.ema)}${cb("mv", "toggle", "Expected move", c.mv)}${cb("fvg", "toggle", "FVG", c.fvg)}${cb("ob", "toggle", "Order blocks", c.ob)}${cb("imb", "toggle", "Imbalance", c.imb)}${cb("idm", "toggle", "Inducement", c.idm)}</div>
   ${chartNotes(A)}`;
   el.onclick = e => {
     const b = e.target.closest && e.target.closest(".cb");
@@ -759,6 +805,13 @@ function chartNotes(A) {
   if (A.sweep) L.push(`<li><b>Sweep:</b> the ${A.sweep.n} was just taken and price closed back ${A.sweep.up ? "above" : "below"} it, a possible reversal ${A.sweep.up ? "up" : "down"}.</li>`);
   if (P) L.push(`<li><b>Setup:</b> ${A.verdict} near ${f(P.entry)}. Red zone is the stop at ${f(P.sl)}. Green zones are target 1 (${f(P.tp1)}) and target 2 (${f(P.tp2)}).</li>`);
   if (P) L.push(`<li><b>Expected move:</b> the arrow points ${A.verdict === "BUY" ? "up" : "down"} for roughly ${fmtMove(PAIRS[A.key], A.move[0])} to ${fmtMove(PAIRS[A.key], A.move[1])} over the day. It stops at the chart edge when the move is bigger than the view.</li>`);
+  { const Z = smcZones(g.all), P0 = A.price, fz = z => `${f(z.lo)} to ${f(z.hi)}`, pick = (arr, dir) => arr.filter(z => z.dir === dir && (dir > 0 ? z.hi <= P0 : z.lo >= P0)).sort((a, b) => Math.abs((a.lo + a.hi) / 2 - P0) - Math.abs((b.lo + b.hi) / 2 - P0))[0];
+    const parts = []; const ob1 = pick(Z.ob, 1), ob2 = pick(Z.ob, -1), fv1 = pick(Z.fvg, 1), fv2 = pick(Z.fvg, -1);
+    if (ob1) parts.push(`buy order block ${fz(ob1)}${ob1.touched ? " (already tested once)" : " (untouched)"}`); if (ob2) parts.push(`sell order block ${fz(ob2)}${ob2.touched ? " (tested)" : " (untouched)"}`);
+    if (fv1) parts.push(`bullish gap ${fz(fv1)}`); if (fv2) parts.push(`bearish gap ${fz(fv2)}`);
+    if (parts.length) L.push(`<li><b>Zones:</b> nearest below or above price: ${parts.join("; ")}. Price tends to react when it returns to an untouched zone.</li>`);
+    if (Z.idm.length) L.push(`<li><b>Inducement:</b> ${Z.idm.map(q => `a minor ${q.dir > 0 ? "low" : "high"} at ${f(q.v)} sits between price and the ${q.dir > 0 ? "buy" : "sell"} zone. Smart money often sweeps it first, so wait for that sweep before entering at the zone.`).join(" ")}</li>`);
+    L.push(`<li class="note">Zones are found by rule from the candles (gap of three candles, last opposite candle before a strong break, body gaps, minor swings). They are drawn from the ${TFN[chartCfg.tf]} candles shown. They mark areas to watch, not guaranteed turns.</li>`); }
   if (!P) L.push(`<li><b>Setup:</b> the analysts say WAIT, so no entry, stop or targets are drawn.</li>`);
   return `<ul class="dnotes">${L.join("")}</ul>`;
 }
@@ -792,6 +845,15 @@ function chartSVG(A) {
   if (c.ema) {
     const cl = g.all.map(b => +b.c), line = (arr, col, w) => `<path d="${arr.slice(off).map((v, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1)).join("")}" fill="none" stroke="${col}" stroke-width="${w}" opacity=".9"/>`;
     s += line(ema(cl, 50), "var(--muted)", 1.2) + line(ema(cl, 20), "var(--warn)", 1.2);
+  }
+  // smart money zones (drawn under the candles)
+  const Z = (c.fvg || c.ob || c.imb || c.idm) ? smcZones(g.all) : null;
+  if (Z) {
+    const zr = (zz, col, o, lab, dash) => { if (zz.hi < L || zz.lo > Hh) return; const x0 = Math.max(CPL, x(Math.max(0, zz.i0 - off)) - g.step / 2), yt = y(Math.min(Hh, zz.hi)), yb = y(Math.max(L, zz.lo)); s += `<rect x="${x0.toFixed(1)}" y="${yt.toFixed(1)}" width="${(xr - x0).toFixed(1)}" height="${Math.max(1.5, yb - yt).toFixed(1)}" fill="${col}" opacity="${o}"${dash ? ` stroke="${col}" stroke-width=".8" stroke-dasharray="3 2"` : ""}/><text x="${(x0 + 2).toFixed(1)}" y="${(yt + 8).toFixed(1)}" style="fill:${col};font-size:8px">${lab}</text>`; };
+    if (c.imb) Z.imb.forEach(zz => zr(zz, "var(--muted)", .22, zz.dir > 0 ? "IMB↑" : "IMB↓"));
+    if (c.fvg) Z.fvg.forEach(zz => zr(zz, "var(--accent)", .2, zz.dir > 0 ? "FVG↑" : "FVG↓"));
+    if (c.ob) Z.ob.forEach(zz => zr(zz, zz.dir > 0 ? up : dn, .16, (zz.dir > 0 ? "OB↑" : "OB↓") + (zz.touched ? " tested" : ""), true));
+    if (c.idm) Z.idm.forEach(q => { if (q.v < L || q.v > Hh) return; const x0 = Math.max(CPL, x(Math.max(0, q.i0 - off))), yy = y(q.v); s += `<line x1="${x0.toFixed(1)}" x2="${xr}" y1="${yy.toFixed(1)}" y2="${yy.toFixed(1)}" stroke="var(--fg)" stroke-width="1" stroke-dasharray="1.5 2.5"/><text x="${(xr - 3).toFixed(1)}" y="${(yy - 3).toFixed(1)}" text-anchor="end" style="fill:var(--fg);font-size:8px">IDM ${q.dir > 0 ? "sell-side" : "buy-side"}</text>`; });
   }
   // candles or line
   if (c.type === "line") {
