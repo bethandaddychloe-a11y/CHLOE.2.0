@@ -1381,7 +1381,7 @@ function renderBot() {
   const conn = B.connected ? `<span class="chip buy">EA connected</span>` : `<span class="chip sell">EA not connected${B.lastSeenSec != null ? " · " + B.lastSeenSec + "s ago" : ""}</span>`;
   const views = B.pairs.map(sym => {
     const v = B.views[sym], p = B.preview[sym], cls = !v ? "wait" : v.dir === "BUY" ? "buy" : v.dir === "SELL" ? "sell" : "wait";
-    return `<div class="bot-pair"><div class="bot-row"><b>${esc(B.names[sym] || sym)}</b><span class="chip ${cls}">${v ? v.dir : "WAIT"}</span><span class="r">score ${v ? v.score : 0}</span>${c.pairs.includes(sym) ? "" : `<span class="note">(off)</span>`}</div>
+    return `<div class="bot-pair"><div class="bot-row"><b>${esc(B.names[sym] || sym)}</b><span class="chip ${cls}">${v ? v.dir : "WAIT"}</span><span class="r">score ${v ? v.score : 0}</span>${c.pairs.includes(sym) ? "" : `<span class="note">(off)</span>`}${B.focus && B.focus.sym === sym ? `<span class="chip buy">trading this</span>` : ""}</div>
       <p class="note">${esc(v ? v.reason : "waiting for prices")}</p>
       ${p ? `<p class="note">At ${eq > 0 ? botMoney(eq) : "this"} equity: up to ${p.allowed} of ${p.want} positions fit the ${c.riskCap}% risk limit (about ${botMoney(p.riskPerPos)} risked each at the current lot).</p>` : ""}</div>`;
   }).join("");
@@ -1418,10 +1418,10 @@ function buildBotSettings() {
   set.innerHTML = `<div class="card bot-cfg"><p class="eyebrow">Settings</p>
     <div class="bot-row" style="margin:8px 0">${pairs}</div>
     <div class="fields">${fields}</div>
-    <div style="display:grid;gap:8px;margin-top:10px"><label class="check"><input type="checkbox" id="bo_closeOnStop" ${c.closeOnStop ? "checked" : ""}>Close everything when a safety stop triggers</label><label class="check"><input type="checkbox" id="bo_news" ${c.news ? "checked" : ""}>Pause new stacks around major news</label></div>
+    <div style="display:grid;gap:8px;margin-top:10px"><label class="check"><input type="checkbox" id="bo_closeOnStop" ${c.closeOnStop ? "checked" : ""}>Close everything when a safety stop triggers</label><label class="check"><input type="checkbox" id="bo_fast" ${c.fast ? "checked" : ""}>Fast mode: read the 1 minute chart live (off = 5 minute chart, slower)</label><label class="check"><input type="checkbox" id="bo_news" ${c.news ? "checked" : ""}>Pause new stacks around major news</label></div>
     <div class="actions"><button class="btn primary" id="boSave" type="button">Save settings</button></div><p class="status" id="boSaveMsg" role="status"></p></div>
     <div class="card" style="margin-top:10px"><p class="eyebrow">How it works</p>
-      <ol class="steps"><li>The five analysts (trend, bigger picture, momentum, structure, news) score each pair from broker prices from −100 to 100. When the score passes the minimum, a stack opens.</li>
+      <ol class="steps"><li>The five analysts (trend, bigger picture, momentum, structure, news) score each pair from −100 to 100. In fast mode they read the live 1 minute chart, with the 5 minute chart as the bigger picture. When the score passes the minimum, a stack opens.</li>
       <li>A stack is several equal positions opened together. Each has its own stop. At about 50 cents of profit per 0.01 lot a position starts trailing and closes when the price turns back.</li>
       <li>When a whole stack ends in profit the lot goes up by 0.02; after a loss it goes down by 0.01. One more position is added for each $20 the account grows.</li>
       <li>The Expert Advisor on your Virtarix server does the trading and trailing itself, so open trades stay protected even if this server sleeps.</li></ol></div>
@@ -1431,7 +1431,7 @@ function buildBotSettings() {
       <li>Compile <code>ChloeEA5.mq5</code> in MetaEditor, put it on one chart, and set <code>InpServerUrl</code> to <code>https://chloe2.onrender.com</code> and <code>InpEAKey</code> to your EA_KEY. Symbol ending stays <code>m</code>.</li>
       <li>Switch on Algo Trading. This tab shows <b>EA connected</b> within seconds. Then tap Start the bot.</li></ol>${B.configured && B.configured.ea_key ? "" : `<p class="status err">EA_KEY is not set on the server yet.</p>`}</div>`;
   $("#boSave").onclick = () => {
-    const o = { pairs: [...set.querySelectorAll("[data-p]")].filter(x => x.checked).map(x => x.dataset.p), closeOnStop: $("#bo_closeOnStop").checked, news: $("#bo_news").checked };
+    const o = { pairs: [...set.querySelectorAll("[data-p]")].filter(x => x.checked).map(x => x.dataset.p), closeOnStop: $("#bo_closeOnStop").checked, news: $("#bo_news").checked, fast: $("#bo_fast").checked };
     set.querySelectorAll("input[data-k]").forEach(i => { o[i.dataset.k] = parseFloat(i.value); });
     botSend(o, $("#boSaveMsg"));
   };

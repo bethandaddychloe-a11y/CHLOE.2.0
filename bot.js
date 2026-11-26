@@ -13,6 +13,7 @@ const r2 = x => Math.round(x * 100) / 100;
 /* every setting, its limits and what it means. The Bot tab and the Expert Advisor both use these names. */
 const FIELDS = {
   startLot:      { lo: 0.01, hi: 1,    d: 0.01, step: 0.01, label: 'Start lot', hint: 'The lot every new stack starts at, and the lot it falls back towards after losses.' },
+  jpyMult:       { lo: 1,    hi: 20,   d: 10,   step: 1,    label: 'USDJPY lot multiplier', hint: 'USDJPY moves less than gold or BTC, so it trades this many times the normal lot (10 = 0.10 where gold uses 0.01). The risk cap still shrinks it if the account is too small.' },
   lotUp:         { lo: 0,    hi: 0.5,  d: 0.02, step: 0.01, label: 'Lot step up after a profit', hint: 'Added to the lot when a stack (all its positions together) ends in profit.' },
   lotDown:       { lo: 0,    hi: 0.5,  d: 0.01, step: 0.01, label: 'Lot step down after a loss', hint: 'Taken off the lot when a stack ends at a loss. It never goes below the minimum lot.' },
   minLot:        { lo: 0.01, hi: 1,    d: 0.01, step: 0.01, label: 'Smallest lot', hint: 'The lot never goes below this.' },
@@ -25,7 +26,7 @@ const FIELDS = {
   trailPct:      { lo: 20,   hi: 100,  d: 60,   step: 5,    label: 'Trail gap (% of the trigger)', hint: 'How far behind the best price the stop follows. Smaller holds less of a pullback, bigger gives the trade more room.' },
   lockPct:       { lo: 0,    hi: 80,   d: 30,   step: 5,    label: 'Profit always locked once trailing (% of the trigger)', hint: 'Once the trailing stop starts, the stop never sits below this much profit.' },
   riskCap:       { lo: 5,    hi: 50,   d: 30,   step: 1,    label: 'Most equity the whole stack may risk (%)', hint: 'If all positions hit their stop together, you lose about this much. The bot opens fewer positions (or a smaller lot) rather than go above it.' },
-  slAtr:         { lo: 0.3,  hi: 3,    d: 0.8,  step: 0.1,  label: 'Stop loss size (x 5 minute ATR)', hint: 'The stop distance is this many times the average 5 minute candle range.' },
+  slAtr:         { lo: 0.3,  hi: 3,    d: 0.8,  step: 0.1,  label: 'Stop loss size (x ATR of the chart the bot reads)', hint: 'The stop distance is this many times the average 5 minute candle range.' },
   slMin:         { lo: 1,    hi: 6,    d: 2,    step: 0.5,  label: 'Stop is never closer than (x the trigger distance)', hint: 'Keeps the stop from being tighter than normal price noise.' },
   maxSpreadFrac: { lo: 0.1,  hi: 1,    d: 0.5,  step: 0.05, label: 'Skip when the spread is over (x the trigger distance)', hint: 'A wide spread eats the small profit a scalp aims for, so the bot waits.' },
   minScore:      { lo: 20,   hi: 90,   d: 45,   step: 5,    label: 'Analysts must agree by at least (score out of 100)', hint: 'Higher means fewer but better-agreed entries.' },
@@ -34,7 +35,7 @@ const FIELDS = {
   ddStop:        { lo: 5,    hi: 90,   d: 40,   step: 1,    label: 'Stop the bot after a drop of (% from the equity peak)', hint: 'Safety stop: the bot switches itself off and (if ticked) closes everything.' },
   targetEq:      { lo: 0,    hi: 100000000, d: 0, step: 10,  label: 'Target equity ($, 0 = none)', hint: 'The bot stops and (if ticked) closes everything when equity reaches this.' },
 };
-const FLAGS = { closeOnStop: true, news: true };
+const FLAGS = { closeOnStop: true, news: true, fast: true };
 const KEYS = Object.keys(FIELDS);
 
 module.exports = function makeBot(D) {
@@ -59,8 +60,9 @@ module.exports = function makeBot(D) {
 
   /* Pure function: closed 5 minute candles (c5), closed 1 minute candles or null (c1), closed 1 hour candles or null (cH),
      the news lean ('bullish', 'bearish', 'neutral') and the 5 minute strategy reading (scalp: {dir, conf} or null). */
-  function scoreView(c5, c1, cH, bias, scalp, minScore) {
-    if (!c5 || c5.length < 60) return { dir: 'WAIT', score: 0, atr: 0, parts: [], reason: 'not enough 5 minute candles yet' };
+  function scoreView(c5, c1, cH, bias, scalp, minScore, lab) {
+    lab = lab || { main: '5 min', big: '1 hour' };
+    if (!c5 || c5.length < 60) return { dir: 'WAIT', score: 0, atr: 0, parts: [], reason: 'not enough ' + lab.main + ' candles yet' };
     const px = c5[c5.length - 1].c, closes = c5.map(c => c.c), parts = [];
     const atr = atrLast(c5, 14);
     if (!(atr > 0)) return { dir: 'WAIT', score: 0, atr: 0, parts: [], reason: 'no price movement' };
@@ -71,10 +73,10 @@ module.exports = function makeBot(D) {
     else if (e20[n] < e50[n] && px < e20[n]) { t = -25; tn = '20 below 50, price below the 20'; }
     else if (e20[n] > e50[n]) { t = 8; tn = '20 above 50 but price under the 20'; }
     else if (e20[n] < e50[n]) { t = -8; tn = '20 below 50 but price over the 20'; }
-    parts.push({ name: 'Trend (5 min)', v: t, note: tn });
+    parts.push({ name: 'Trend (' + lab.main + ')', v: t, note: tn });
     // 2. bigger picture analyst: 1 hour averages (or the long 5 minute averages when 1 hour candles are missing)
     let h = 0, hn = 'no data';
-    if (cH && cH.length >= 55) { const hc = cH.map(c => c.c), h20 = emaSeries(hc, 20), h50 = emaSeries(hc, 50), m = hc.length - 1; if (h20[m] > h50[m] && hc[m] > h50[m]) { h = 20; hn = '1 hour averages point up'; } else if (h20[m] < h50[m] && hc[m] < h50[m]) { h = -20; hn = '1 hour averages point down'; } else hn = '1 hour is mixed'; }
+    if (cH && cH.length >= 55) { const hc = cH.map(c => c.c), h20 = emaSeries(hc, 20), h50 = emaSeries(hc, 50), m = hc.length - 1; if (h20[m] > h50[m] && hc[m] > h50[m]) { h = 20; hn = lab.big + ' averages point up'; } else if (h20[m] < h50[m] && hc[m] < h50[m]) { h = -20; hn = lab.big + ' averages point down'; } else hn = lab.big + ' is mixed'; }
     else if (closes.length >= 210) { const l1 = emaSeries(closes, 100), l2 = emaSeries(closes, 200); if (l1[n] > l2[n] && px > l2[n]) { h = 20; hn = 'long averages point up'; } else if (l1[n] < l2[n] && px < l2[n]) { h = -20; hn = 'long averages point down'; } else hn = 'long averages mixed'; }
     parts.push({ name: 'Bigger picture', v: h, note: hn });
     // 3. momentum analyst: RSI on 5 minutes, and the fast 1 minute averages
@@ -104,6 +106,12 @@ module.exports = function makeBot(D) {
   const biasCache = {};
   async function viewFor(sym) {
     const c = B().cfg, closed = (cs, tf) => { if (!cs) return null; const last = cs[cs.length - 1], t = Date.parse(last.t.replace(' ', 'T') + 'Z'), mins = { M1: 1, M5: 5, H1: 60 }[tf]; return isFinite(t) && Date.now() < t + mins * 60000 ? cs.slice(0, -1) : cs; };
+    if (c.fast) {   // fast mode: read the 1 minute chart live (including the candle still forming), with 5 minutes as the bigger picture
+      const r1 = D.brokerGet(sym, 'M1', 60), r5 = D.brokerGet(sym, 'M5', 240);
+      if (!r1 || !r5) return { dir: 'WAIT', score: 0, atr: 0, parts: [], reason: 'waiting for 1 and 5 minute prices from MT5 (the Expert Advisor sends them)', at: Date.now() };
+      let bias = 'neutral'; const bc = biasCache[sym]; if (bc && Date.now() - bc.at < 300000) bias = bc.v; else { try { bias = await D.biasFor(sym) || 'neutral'; } catch (e) {} biasCache[sym] = { at: Date.now(), v: bias }; }
+      const v = scoreView(r1, null, closed(r5, 'M5'), bias, null, c.minScore, { main: '1 min', big: '5 min' }); v.at = Date.now(); v.hasM1 = true; v.hasH1 = false; return v;
+    }
     const raw5 = D.brokerGet(sym, 'M5', 240);
     if (!raw5) return { dir: 'WAIT', score: 0, atr: 0, parts: [], reason: 'waiting for 5 minute prices from MT5 (the Expert Advisor sends them)', at: Date.now() };
     const c5 = closed(raw5, 'M5'), c1 = closed(D.brokerGet(sym, 'M1', 180), 'M1'), cH = closed(D.brokerGet(sym, 'H1', 900), 'H1');
@@ -144,6 +152,15 @@ module.exports = function makeBot(D) {
     msgs.forEach(m => { try { telegram(m); } catch (e) {} });
   }
 
+  /* only one pair at a time: keep the pair that already has a stack open, otherwise the pair the analysts agree on most */
+  function focus() {
+    const b = B(), c = b.cfg, open = ((b.tel && b.tel.open) || []).map(o => o.sym), now = Date.now();
+    const busy = PAIRS.find(s => open.includes(s)); if (busy) return { sym: busy, why: 'has a stack open' };
+    let best = null;
+    for (const s of PAIRS) { const v = b.views[s]; if (!c.pairs.includes(s) || !v || v.dir === 'WAIT' || now - v.at > 150000) continue; if (!best || Math.abs(v.score) > Math.abs(best.score)) best = { sym: s, score: v.score, why: 'agrees most' }; }
+    return best;
+  }
+
   /* lines appended to the plain-text reply the EA reads */
   async function lines() {
     const b = B(), c = b.cfg, out = [];
@@ -155,7 +172,8 @@ module.exports = function makeBot(D) {
     if (c.news && D.inBlackout && D.inBlackout()) hold = 'news blackout around a scheduled release';
     if (D.paused && D.paused()) hold = 'paused from Telegram (/resume)';
     if (hold) out.push('BOTHOLD|' + hold);
-    for (const sym of PAIRS) { const v = b.views[sym]; if (v) out.push('BOTVIEW|' + sym + '|' + v.dir + '|' + v.score + '|' + (v.atr ? +v.atr.toPrecision(6) : 0) + '|' + Math.round((now - v.at) / 1000) + '|' + String(v.reason || '').replace(/[|\n]/g, ' ').slice(0, 90)); }
+    const fo = focus();
+    for (const sym of PAIRS) { let v = b.views[sym]; if (v && fo && sym !== fo.sym && v.dir !== 'WAIT') v = Object.assign({}, v, { dir: 'WAIT', reason: 'one pair at a time: ' + (NAME[fo.sym] || fo.sym) + ' ' + fo.why }); if (v) out.push('BOTVIEW|' + sym + '|' + v.dir + '|' + v.score + '|' + (v.atr ? +v.atr.toPrecision(6) : 0) + '|' + Math.round((now - v.at) / 1000) + '|' + String(v.reason || '').replace(/[|\n]/g, ' ').slice(0, 90)); }
     return out;
   }
 
@@ -164,9 +182,9 @@ module.exports = function makeBot(D) {
     const b = B(), c = b.cfg, now = Date.now(), tel = b.tel, eq = tel && tel.eq || 0, lot = tel && tel.lot || c.startLot;
     const cy = b.cycles, wins = cy.filter(x => x.net > 0).length, net = r2(cy.reduce((s, x) => s + x.net, 0));
     return {
-      cfg: c, fields: FIELDS, pairs: PAIRS, names: NAME, connected: !!(tel && now - tel.at < 120000), lastSeenSec: tel ? Math.round((now - tel.at) / 1000) : null,
+      focus: focus(), cfg: c, fields: FIELDS, pairs: PAIRS, names: NAME, connected: !!(tel && now - tel.at < 120000), lastSeenSec: tel ? Math.round((now - tel.at) / 1000) : null,
       configured: { ea_key: !!eaKey() }, tel, lot, posTarget: posTarget(eq || c.baseEq, c),
-      views: Object.fromEntries(PAIRS.map(s => [s, b.views[s] || null])), preview: Object.fromEntries(PAIRS.map(s => [s, preview(s, eq || c.baseEq, lot)])),
+      views: Object.fromEntries(PAIRS.map(s => [s, b.views[s] || null])), preview: Object.fromEntries(PAIRS.map(s => [s, preview(s, eq || c.baseEq, s === 'USDJPY' ? lot * c.jpyMult : lot)])),
       cycles: cy.slice(-15).reverse(), stats: { n: cy.length, wins, losses: cy.length - wins, net, hit: cy.length ? Math.round(wins / cy.length * 100) : 0 },
     };
   }
