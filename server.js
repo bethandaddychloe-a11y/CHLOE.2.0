@@ -48,7 +48,7 @@ function readBody(req, limit = 200000) {
 }
 
 /* ---------- candles: Twelve Data ---------- */
-const SYMBOLS = new Set(["XAU/USD", "USD/JPY", "BTC/USD", "QQQ", "UUP"]);
+const SYMBOLS = new Set(["XAU/USD", "BTC/USD", "QQQ", "UUP"]);
 const INTERVALS = new Set(["15min", "1h", "4h", "1day"]);
 function series(symbol, interval, size, tz) {
   if (!SYMBOLS.has(symbol) || !INTERVALS.has(interval)) throw new Error("Unsupported symbol or interval");
@@ -77,7 +77,7 @@ function macro() {
 /* ---------- COT: CFTC public data (speculator positioning) ---------- */
 const COT = {
   XAUUSD: { kw: "GOLD", pick: [/^GOLD - COMMODITY EXCHANGE/, /^GOLD/] },
-  USDJPY: { kw: "JAPANESE YEN", pick: [/^JAPANESE YEN - CHICAGO MERCANTILE/, /^JAPANESE YEN/] },
+  NASDAQ: { kw: "NASDAQ", pick: [/^NASDAQ MINI/, /^NASDAQ-100 STOCK INDEX \(MINI\)/, /^NASDAQ/] },
   BTCUSD: { kw: "BITCOIN", pick: [/^BITCOIN - CHICAGO MERCANTILE/, /^BITCOIN/] }
 };
 const CFTC = "https://publicreporting.cftc.gov/resource/6dca-aqww.json";
@@ -184,7 +184,7 @@ function parseLoose(t) {
 }
 
 /* ---------- news tone: Finnhub headlines scored by the AI ---------- */
-const NAMES = { XAUUSD: "Gold (XAUUSD)", USDJPY: "the US dollar against the Japanese yen (USDJPY)", BTCUSD: "Bitcoin (BTCUSD)" };
+const NAMES = { XAUUSD: "Gold (XAUUSD)", BTCUSD: "Bitcoin (BTCUSD)", NASDAQ: "the Nasdaq-100 index" };
 function sentiment(pair) {
   if (!NAMES[pair]) throw new Error("Unknown pair");
   return cached("sent|" + pair, 20 * 60000, async () => {
@@ -212,7 +212,7 @@ async function upstash(cmd) {
 
 /* ---------- economic calendar: free weekly feed, saved copy, then AI web search as backup ---------- */
 const FF_HOSTS = ["https://nfs.faireconomy.media", "https://cdn-nfs.faireconomy.media"];
-const CAL_CUR = ["USD", "JPY"];
+const CAL_CUR = ["USD"];
 let calMem = null, calFFFail = 0;
 function normEvents(list) {
   return (Array.isArray(list) ? list : []).filter(x => x && x.title && (x.date || x.time))
@@ -264,8 +264,8 @@ async function fredCalendar() {
 }
 async function aiCalendar() {
   const now = new Date(), prompt = `You are an economic calendar researcher. Today is ${now.toUTCString()}.
-Search the web for the high and medium impact economic events scheduled from now until 7 days ahead for the United States (USD) and Japan (JPY). Include inflation (CPI, PPI), jobs (payrolls, unemployment, jobless claims), central bank rate decisions and speeches (Fed, BOJ), GDP, retail sales and PMIs. Use the official or consensus release times.
-Reply with only a JSON array, no markdown. Each item: {"title":"","country":"USD|JPY","impact":"High|Medium","time":"ISO 8601 UTC like 2026-11-12T13:30:00Z","forecast":"","previous":""}. Leave forecast or previous empty if unknown. Never invent an event you could not find.`;
+Search the web for the high and medium impact economic events scheduled from now until 7 days ahead for the United States (USD). Include inflation (CPI, PPI), jobs (payrolls, unemployment, jobless claims), central bank rate decisions and speeches (Fed, BOJ), GDP, retail sales and PMIs. Use the official or consensus release times.
+Reply with only a JSON array, no markdown. Each item: {"title":"","country":"USD","impact":"High|Medium","time":"ISO 8601 UTC like 2026-11-12T13:30:00Z","forecast":"","previous":""}. Leave forecast or previous empty if unknown. Never invent an event you could not find.`;
   const meta = {}, text = await llm([{ role: "user", content: prompt }], { json: true, search: true, maxTokens: 4000, meta });
   const events = normEvents(parseLoose(text)).filter(x => x.t > Date.now() - 3 * 3600000 && x.t < Date.now() + 8 * 86400000);
   if (!events.length) throw new Error("The AI search found no events");
@@ -293,7 +293,7 @@ async function calendar() {
 }
 
 /* ---------- auto trading through MetaApi (optional) ---------- */
-const MT_SYM = { XAUUSD: "XAUUSD", USDJPY: "USDJPY", BTCUSD: "BTCUSD" };
+const MT_SYM = { XAUUSD: "XAUUSD", BTCUSD: "BTCUSD", NASDAQ: E.NAS_SYMBOL || "USTEC" };
 const mtSymbol = pair => { if (!MT_SYM[pair]) throw new Error("Unknown pair"); return MT_SYM[pair] + (E.SYMBOL_SUFFIX || ""); };
 const MAX_LOT = parseFloat(E.MAX_LOT) > 0 ? parseFloat(E.MAX_LOT) : 0.05;
 const MAX_POS = parseInt(E.MAX_POSITIONS, 10) > 0 ? parseInt(E.MAX_POSITIONS, 10) : 3;
@@ -318,6 +318,7 @@ async function tradeStatus() {
 const recent = new Map();
 async function placeOrder(b) {
   const side = String(b.side || "").toUpperCase(), symbol = mtSymbol(b.pair), vol = Math.round(parseFloat(b.volume) * 100) / 100, sl = parseFloat(b.sl), tp = parseFloat(b.tp);
+  if (b.pair === "NASDAQ") throw new Error("Nasdaq has no lot sizing yet, so it is switched off for the Auto tab. The scalping bot trades it instead.");
   if (!["BUY", "SELL"].includes(side)) throw new Error("Side must be BUY or SELL");
   if (!(vol >= 0.01)) throw new Error("Lot must be at least 0.01");
   if (vol > MAX_LOT) throw new Error(`Lot ${vol} is above the server cap of ${MAX_LOT}. Raise MAX_LOT in Render if you really want that.`);
@@ -373,24 +374,21 @@ async function research(ev) {
   const agents = rs.map((r, i) => ({ name: AGENTS[i][0], ok: r.status === "fulfilled", note: r.status === "fulfilled" ? String(r.value).trim().slice(0, 700) : "Search failed: " + scrub(String(r.reason && r.reason.message || "")).slice(0, 90) }));
   if (!agents.some(a => a.ok)) throw new Error(agents[0].note);
   const seen = new Set(), sources = []; for (const m of metas) for (const x of (m.sources || [])) if (!seen.has(x.url) && sources.length < 6) { seen.add(x.url); sources.push(x); }
-  const pairs = "XAUUSD (Gold), USDJPY, BTCUSD (Bitcoin)";
+  const pairs = "XAUUSD (Gold), BTCUSD (Bitcoin), NASDAQ (Nasdaq-100)";
   const chair = `You are the chair of a macro research desk. Today is ${new Date().toUTCString()}.
 Event: ${evText}.
 ${hist ? "Official data history (calculated, trust these numbers): " + hist : "No official history numbers were available for this event."}
 Research notes from four analysts:
 ${agents.map(a => `- ${a.name}: ${a.note}`).join("\n")}
 Combine all of this. Estimate the chance the actual figure comes in below, in line with, or above the forecast (integers summing to 100). Lean on the official history and the analysts' facts, not on guesses. If the notes disagree or key facts are missing, lower your confidence and keep the odds closer to even. Then say how each pair usually reacts in each case: ${pairs}. Keep every "why" under 16 words.
-Reply with only JSON, no markdown: {"forecast":"","previous":"","odds":{"below":0,"match":0,"above":0},"summary":"one or two sentences","drivers":["up to 4 short findings"],"confidence":{"level":"low|medium|high","why":"one short sentence"},"reactions":{"XAUUSD":{"below":{"dir":"BUY|SELL|CHOP","why":""},"match":{"dir":"","why":""},"above":{"dir":"","why":""}}}} with an entry for each of: XAUUSD, USDJPY, BTCUSD.`;
+Reply with only JSON, no markdown: {"forecast":"","previous":"","odds":{"below":0,"match":0,"above":0},"summary":"one or two sentences","drivers":["up to 4 short findings"],"confidence":{"level":"low|medium|high","why":"one short sentence"},"reactions":{"XAUUSD":{"below":{"dir":"BUY|SELL|CHOP","why":""},"match":{"dir":"","why":""},"above":{"dir":"","why":""}}}} with an entry for each of: XAUUSD, BTCUSD, NASDAQ.`;
   const text = await llm([{ role: "user", content: chair }], { json: true, maxTokens: 3000 });
   return { text, sources, agents, history: hist, searched: metas.some(m => (m.sources || []).length > 0) };
 }
 
 
-/* ---------- pair drivers: what GBPUSD and USDJPY actually react to ---------- */
-const DRV = {
-  USDJPY: { home: "Japan", bank: "Bank of Japan", cur: "JPY", yld: "IRLTLT01JPM156N", rate: "IR3TIB01JPM156N",
-    focus: "Bank of Japan policy path and any hint of a hike, the US-Japan 10-year yield gap, Japan's Ministry of Finance comments or intervention in the yen, Japan inflation, risk sentiment (yen is a safe haven)" }
-};
+/* ---------- pair drivers (none are set up for gold, Bitcoin or Nasdaq) ---------- */
+const DRV = {};
 async function fredLatest(id, n = 8) {
   if (!E.FRED_KEY) return [];
   try { const j = await getJson(`https://api.stlouisfed.org/fred/series/observations?series_id=${id}&api_key=${need("FRED_KEY")}&file_type=json&sort_order=desc&limit=${n}`);
@@ -437,7 +435,7 @@ policy = rate path and central bank gap. economy = inflation, growth, jobs and y
 
 
 /* ---------- scalping bot: the Expert Advisor on the VPS trades, this server analyses and keeps the settings ---------- */
-const BOT_TFS = new Set(["M1", "M5", "M15", "H1", "H4"]), BOT_SYMS = new Set(["XAUUSD", "USDJPY", "BTCUSD"]), brokerCs = {};
+const BOT_TFS = new Set(["M1", "M5", "M15", "H1", "H4"]), BOT_SYMS = new Set(["XAUUSD", "BTCUSD", "USTEC"]), brokerCs = {};
 function brokerGet(sym, tf, maxAgeSec) { const b = brokerCs[sym + "|" + tf]; return b && b.cs.length >= 70 && Date.now() - b.at < maxAgeSec * 1000 ? b.cs : null; }
 function brokerPut(sym, tf, rows) {
   if (!BOT_SYMS.has(sym) || !BOT_TFS.has(tf) || !Array.isArray(rows)) return { ok: false, error: "bad symbol, timeframe or rows" };
@@ -455,7 +453,7 @@ async function botSave() {
   botLastSave = Date.now(); botHash = txt;
   try { await upstash(["SET", "chloe2:bot", txt]); } catch { botHash = ""; }
 }
-const botBias = async pair => { const s = await sentiment(pair); return s.score > 0.25 ? "bullish" : s.score < -0.25 ? "bearish" : "neutral"; };
+const botBias = async pair => { const s = await sentiment(pair === "USTEC" ? "NASDAQ" : pair); return s.score > 0.25 ? "bullish" : s.score < -0.25 ? "bearish" : "neutral"; };
 const inBlackout = () => { const n = Date.now(); return !!(calMem && calMem.events && calMem.events.some(x => x.impact === "High" && n > x.t - 10 * 60000 && n < x.t + 10 * 60000)); };
 const BOT = require("./bot.js")({ state: botState, saveState: botSave, telegram: () => {}, E, ENV: E, brokerGet, biasFor: botBias, inBlackout, paused: () => false });
 BOT.init();
@@ -506,7 +504,7 @@ async function api(req, res, u) {
   }
   if (p === "/api/research" && req.method === "POST") {
     const b = await readBody(req), t = +b.t;
-    if (typeof b.title !== "string" || b.title.length > 90 || !["USD", "JPY"].includes(b.cur) || !Number.isFinite(t)) throw new Error("Bad event");
+    if (typeof b.title !== "string" || b.title.length > 90 || !["USD"].includes(b.cur) || !Number.isFinite(t)) throw new Error("Bad event");
     return send(res, 200, await research({ title: b.title, cur: b.cur, impact: String(b.impact || "").slice(0, 10), t, forecast: String(b.forecast || "").slice(0, 20), previous: String(b.previous || "").slice(0, 20) }));
   }
   if (p === "/api/preds") {

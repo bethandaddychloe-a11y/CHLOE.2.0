@@ -363,11 +363,11 @@ const store = { get(k, d) { try { const v = localStorage.getItem(k); return v ==
 /* ---------- instruments ---------- */
 const PAIRS = {
   XAUUSD: { sub: "Gold", sym: "XAU/USD", dec: 2, unit: "$", pip: 1, vpp: () => 100, macro: { usd: -0.6, bond: 0.4 }, need: ["UUP"] },
-  USDJPY: { sub: "Dollar-Yen", sym: "USD/JPY", dec: 3, unit: "pips", pip: 0.01, vpp: p => 100000 / p, macro: { usd: 0.6, bond: -0.4 }, need: ["UUP"] },
-  BTCUSD: { sub: "Bitcoin", sym: "BTC/USD", dec: 1, unit: "$", pip: 1, vpp: () => 1, macro: { usd: -0.4, risk: 0.6 }, need: ["UUP", "QQQ"] }
+  BTCUSD: { sub: "Bitcoin", sym: "BTC/USD", dec: 1, unit: "$", pip: 1, vpp: () => 1, macro: { usd: -0.4, risk: 0.6 }, need: ["UUP", "QQQ"] },
+  NASDAQ: { sub: "Nasdaq-100 (QQQ scaled to your broker)", sym: "QQQ", dec: 1, unit: "$", pip: 1, vpp: null, macro: { usd: -0.3, bond: 0.7 }, need: ["UUP"] }
 };
 const PROXY_NAME = { UUP: "Dollar (UUP)", TLT: "Long bonds (TLT)", QQQ: "Nasdaq (QQQ)" };
-const OPT = { XAUUSD: { sym: "GLD", sign: 1 }, USDJPY: { sym: "UUP", sign: 1 }, BTCUSD: { sym: "IBIT", sign: 1 } };
+const OPT = { XAUUSD: { sym: "GLD", sign: 1 }, BTCUSD: { sym: "IBIT", sign: 1 }, NASDAQ: { sym: "QQQ", sign: 1 } };
 let pair = store.get("c2.pair", "XAUUSD"); if (!PAIRS[pair]) pair = "XAUUSD";
 const raw = {};      // pair -> fetched candles
 const results = {};  // pair -> analysis
@@ -449,7 +449,7 @@ function analyze(key) {
   const fac = { usd: P.UUP ? proxyTrend(P.UUP) : 0, bond: 0, risk: P.QQQ ? proxyTrend(P.QQQ) : 0 };
   const F = R.feeds || {}, AVm = F.macro;
   const dir = v => v > 0.15 ? "rising" : v < -0.15 ? "falling" : "flat";
-  const sgnM = { XAUUSD: -1, USDJPY: 1, BTCUSD: -0.6 }[key];
+  const sgnM = { XAUUSD: -1, BTCUSD: -0.6, NASDAQ: -0.6 }[key];
   const pParts = [`dollar proxy (UUP) ${dir(fac.usd)}`]; if (P.QQQ) pParts.push(`Nasdaq ${dir(fac.risk)} (risk appetite)`);
   let macro = 0, macroText, macroSrc;
   if (AVm) {
@@ -543,7 +543,7 @@ async function getSeries(symbol, interval, size) {
   if (!Array.isArray(j.rows) || j.rows.length < 30) throw new Error("Not enough candles returned");
   return j.rows;
 }
-const COTSIGN = { XAUUSD: 1, USDJPY: -1, BTCUSD: 1 };
+const COTSIGN = { XAUUSD: 1, BTCUSD: 1, NASDAQ: 1 };
 function macroScore(m) {
   if (!m) return null;
   const parts = []; let H = 0, w = 0;
@@ -557,7 +557,7 @@ function macroScore(m) {
   if (m.nfp && m.nfp.length >= 8) { const ch = i => m.nfp[i].v - m.nfp[i + 1].v, prev = [1, 2, 3, 4, 5, 6].map(ch), z = (ch(0) - mean(prev)) / (sd(prev) || 1); H += 0.15 * Math.tanh(z / 2); w += 0.15; parts.push(`payroll growth ${z > 0.5 ? "stronger than" : z < -0.5 ? "weaker than" : "in line with"} its 6-month pace`); }
   return w ? { H: H / w, w, parts } : null;
 }
-const DRVPAIRS = ["USDJPY"];
+const DRVPAIRS = [];
 async function loadFeeds(key) {
   const out = { errs: [] }, oc = OPT[key];
   const grab = async (name, path, fn, ms) => {
@@ -1073,7 +1073,7 @@ const sgnOf = d => { d = String(d || "").toUpperCase(); return d === "BUY" ? 1 :
 const hm = t => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const rel = ms => { const m = Math.round(ms / 60000), a = Math.abs(m), t = a < 60 ? a + "m" : a < 1440 ? Math.floor(a / 60) + "h " + (a % 60) + "m" : Math.floor(a / 1440) + "d " + Math.floor((a % 1440) / 60) + "h " + (a % 60) + "m"; return m < 0 ? t + " ago" : t; };
 const CTRY = { USD: "US", JPY: "JP" };
-const REL = { USD: ["XAUUSD", "USDJPY", "BTCUSD"], JPY: ["USDJPY"] };
+const REL = { USD: ["XAUUSD", "BTCUSD", "NASDAQ"] };
 function evTag(t) {
   if (/cpi|inflation|ppi|pce|price/i.test(t)) return "Inflation";
   if (/non-farm|nonfarm|employment|unemployment|payroll|jobless|claims|adp|jobs/i.test(t)) return "Jobs";
@@ -1132,7 +1132,7 @@ function resultHTML(x, r, meta) {
 }
 /* ---------- predictions and scorecard ---------- */
 let preds = [], scoring = false;
-const RX_THR = { XAUUSD: 0.10, USDJPY: 0.08, BTCUSD: 0.25 };
+const RX_THR = { XAUUSD: 0.10, BTCUSD: 0.25, NASDAQ: 0.10 };
 function parseVal(v) { const m = String(v || "").replace(/[,\s%$]/g, "").match(/^(-?\d+(?:\.\d+)?)([kmbt])?$/i); if (!m) return null; return parseFloat(m[1]) * ({ k: 1e3, m: 1e6, b: 1e9, t: 1e12 }[(m[2] || "").toLowerCase()] || 1); }
 function callsFor(x, r) {
   const o = r.odds || {}, below = +o.below || 0, match = +o.match || 0, above = +o.above || 0, tot = below + match + above || 100, R = r.reactions || {};

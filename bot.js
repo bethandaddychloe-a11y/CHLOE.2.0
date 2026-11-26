@@ -5,15 +5,14 @@
    The Expert Advisor on your VPS does the trading itself (opens the stack, trails every position, steps the lot up and down),
    so open trades keep being managed even if this server is asleep or offline. The server never holds your broker password. */
 
-const PAIRS = ['XAUUSD', 'BTCUSD', 'USDJPY'];
-const NAME = { XAUUSD: 'Gold', BTCUSD: 'Bitcoin', USDJPY: 'USDJPY' };
+const PAIRS = ['XAUUSD', 'BTCUSD', 'USTEC'];
+const NAME = { XAUUSD: 'Gold', BTCUSD: 'Bitcoin', USTEC: 'Nasdaq' };
 const num = (x, lo, hi, d) => { x = parseFloat(x); return isFinite(x) ? Math.min(hi, Math.max(lo, x)) : d; };
 const r2 = x => Math.round(x * 100) / 100;
 
 /* every setting, its limits and what it means. The Bot tab and the Expert Advisor both use these names. */
 const FIELDS = {
   startLot:      { lo: 0.01, hi: 1,    d: 0.01, step: 0.01, label: 'Start lot', hint: 'The lot every new stack starts at, and the lot it falls back towards after losses.' },
-  jpyMult:       { lo: 1,    hi: 20,   d: 10,   step: 1,    label: 'USDJPY lot multiplier', hint: 'USDJPY moves less than gold or BTC, so it trades this many times the normal lot (10 = 0.10 where gold uses 0.01). The risk cap still shrinks it if the account is too small.' },
   lotUp:         { lo: 0,    hi: 0.5,  d: 0.02, step: 0.01, label: 'Lot step up after a profit', hint: 'Added to the lot when a stack (all its positions together) ends in profit.' },
   lotDown:       { lo: 0,    hi: 0.5,  d: 0.01, step: 0.01, label: 'Lot step down after a loss', hint: 'Taken off the lot when a stack ends at a loss. It never goes below the minimum lot.' },
   minLot:        { lo: 0.01, hi: 1,    d: 0.01, step: 0.01, label: 'Smallest lot', hint: 'The lot never goes below this.' },
@@ -48,6 +47,7 @@ module.exports = function makeBot(D) {
     KEYS.forEach(k => { b.cfg[k] = num(b.cfg[k], FIELDS[k].lo, FIELDS[k].hi, FIELDS[k].d); });
     Object.keys(FLAGS).forEach(k => { b.cfg[k] = b.cfg[k] == null ? FLAGS[k] : !!b.cfg[k]; });
     b.cfg.pairs = (b.cfg.pairs || []).filter(s => PAIRS.includes(s));
+    if (!b.cfg.migNas) { b.cfg.migNas = true; if (!b.cfg.pairs.includes('USTEC')) b.cfg.pairs.push('USTEC'); }   // USDJPY was replaced by Nasdaq
     b.views = b.views || {}; b.cycles = b.cycles || []; b.seen = b.seen || []; b.tel = b.tel || null; b.notes = b.notes || {};
     return b;
   }
@@ -127,7 +127,7 @@ module.exports = function makeBot(D) {
   }
 
   /* ---------------- what the bot would do right now (an estimate from standard contract sizes) ---------------- */
-  const VPU = { XAUUSD: () => 100, BTCUSD: () => 1, USDJPY: px => 100000 / px }; // dollars per 1.00 of price per 1.00 lot
+  const VPU = { XAUUSD: () => 100, BTCUSD: () => 1, USTEC: () => 1 }; // (Nasdaq: an estimate, the Expert Advisor uses the broker's real contract value) dollars per 1.00 of price per 1.00 lot
   function posTarget(eq, c) { return Math.max(1, Math.min(c.maxPos, c.startPos + Math.floor(Math.max(0, eq - c.baseEq) / Math.max(1, c.addEveryUsd)))); }
   function preview(sym, eq, lot) {
     const c = B().cfg, v = B().views[sym]; if (!v || !(v.atr > 0) || !(eq > 0)) return null;
@@ -184,7 +184,7 @@ module.exports = function makeBot(D) {
     return {
       focus: focus(), cfg: c, fields: FIELDS, pairs: PAIRS, names: NAME, connected: !!(tel && now - tel.at < 120000), lastSeenSec: tel ? Math.round((now - tel.at) / 1000) : null,
       configured: { ea_key: !!eaKey() }, tel, lot, posTarget: posTarget(eq || c.baseEq, c),
-      views: Object.fromEntries(PAIRS.map(s => [s, b.views[s] || null])), preview: Object.fromEntries(PAIRS.map(s => [s, preview(s, eq || c.baseEq, s === 'USDJPY' ? lot * c.jpyMult : lot)])),
+      views: Object.fromEntries(PAIRS.map(s => [s, b.views[s] || null])), preview: Object.fromEntries(PAIRS.map(s => [s, preview(s, eq || c.baseEq, lot)])),
       cycles: cy.slice(-15).reverse(), stats: { n: cy.length, wins, losses: cy.length - wins, net, hit: cy.length ? Math.round(wins / cy.length * 100) : 0 },
     };
   }
