@@ -48,7 +48,7 @@ function readBody(req, limit = 200000) {
 }
 
 /* ---------- candles: Twelve Data ---------- */
-const SYMBOLS = new Set(["XAU/USD", "BTC/USD", "QQQ", "UUP"]);
+const SYMBOLS = new Set(["XAU/USD", "BTC/USD", "EUR/USD", "GBP/USD", "USD/JPY", "USD/CHF", "USD/CAD", "AUD/USD", "NZD/USD", "EUR/JPY", "GBP/JPY", "EUR/GBP", "AUD/JPY", "XAG/USD", "ETH/USD", "QQQ", "UUP"]);
 const INTERVALS = new Set(["15min", "1h", "4h", "1day"]);
 function series(symbol, interval, size, tz) {
   if (!SYMBOLS.has(symbol) || !INTERVALS.has(interval)) throw new Error("Unsupported symbol or interval");
@@ -78,6 +78,19 @@ function macro() {
 const COT = {
   XAUUSD: { kw: "GOLD", pick: [/^GOLD - COMMODITY EXCHANGE/, /^GOLD/] },
   NASDAQ: { kw: "NASDAQ", pick: [/^NASDAQ MINI/, /^NASDAQ-100 STOCK INDEX \(MINI\)/, /^NASDAQ/] },
+  EURUSD: { kw: "EURO FX", pick: [/^EURO FX - CHICAGO MERCANTILE/, /^EURO FX/] },
+  GBPUSD: { kw: "BRITISH POUND", pick: [/^BRITISH POUND - CHICAGO MERCANTILE/, /^BRITISH POUND/] },
+  USDJPY: { kw: "JAPANESE YEN", pick: [/^JAPANESE YEN - CHICAGO MERCANTILE/, /^JAPANESE YEN/] },
+  USDCHF: { kw: "SWISS FRANC", pick: [/^SWISS FRANC - CHICAGO MERCANTILE/, /^SWISS FRANC/] },
+  USDCAD: { kw: "CANADIAN DOLLAR", pick: [/^CANADIAN DOLLAR - CHICAGO MERCANTILE/, /^CANADIAN DOLLAR/] },
+  AUDUSD: { kw: "AUSTRALIAN DOLLAR", pick: [/^AUSTRALIAN DOLLAR - CHICAGO MERCANTILE/, /^AUSTRALIAN DOLLAR/] },
+  NZDUSD: { kw: "NEW ZEALAND DOLLAR", pick: [/^NZ DOLLAR - CHICAGO MERCANTILE/, /^NEW ZEALAND DOLLAR/, /^NZ DOLLAR/] },
+  EURJPY: { kw: "EURO FX", pick: [/^EURO FX - CHICAGO MERCANTILE/, /^EURO FX/] },
+  GBPJPY: { kw: "BRITISH POUND", pick: [/^BRITISH POUND - CHICAGO MERCANTILE/, /^BRITISH POUND/] },
+  EURGBP: { kw: "EURO FX", pick: [/^EURO FX - CHICAGO MERCANTILE/, /^EURO FX/] },
+  AUDJPY: { kw: "AUSTRALIAN DOLLAR", pick: [/^AUSTRALIAN DOLLAR - CHICAGO MERCANTILE/, /^AUSTRALIAN DOLLAR/] },
+  XAGUSD: { kw: "SILVER", pick: [/^SILVER - COMMODITY EXCHANGE/, /^SILVER/] },
+  ETHUSD: { kw: "ETHER", pick: [/^ETHER CASH SETTLED - CHICAGO MERCANTILE/, /^ETHER/] },
   BTCUSD: { kw: "BITCOIN", pick: [/^BITCOIN - CHICAGO MERCANTILE/, /^BITCOIN/] }
 };
 const CFTC = "https://publicreporting.cftc.gov/resource/6dca-aqww.json";
@@ -184,7 +197,7 @@ function parseLoose(t) {
 }
 
 /* ---------- news tone: Finnhub headlines scored by the AI ---------- */
-const NAMES = { XAUUSD: "Gold (XAUUSD)", BTCUSD: "Bitcoin (BTCUSD)", NASDAQ: "the Nasdaq-100 index" };
+const NAMES = { XAUUSD: "Gold (XAUUSD)", BTCUSD: "Bitcoin (BTCUSD)", NASDAQ: "the Nasdaq-100 index", EURUSD: "the euro against the US dollar (EURUSD)", GBPUSD: "the British pound against the US dollar (GBPUSD)", USDJPY: "the US dollar against the Japanese yen (USDJPY)", USDCHF: "the US dollar against the Swiss franc (USDCHF)", USDCAD: "the US dollar against the Canadian dollar (USDCAD)", AUDUSD: "the Australian dollar against the US dollar (AUDUSD)", NZDUSD: "the New Zealand dollar against the US dollar (NZDUSD)", EURJPY: "the euro against the Japanese yen (EURJPY)", GBPJPY: "the British pound against the Japanese yen (GBPJPY)", EURGBP: "the euro against the British pound (EURGBP)", AUDJPY: "the Australian dollar against the Japanese yen (AUDJPY)", XAGUSD: "Silver (XAGUSD)", ETHUSD: "Ethereum (ETHUSD)" };
 function sentiment(pair) {
   if (!NAMES[pair]) throw new Error("Unknown pair");
   return cached("sent|" + pair, 20 * 60000, async () => {
@@ -212,7 +225,7 @@ async function upstash(cmd) {
 
 /* ---------- economic calendar: free weekly feed, saved copy, then AI web search as backup ---------- */
 const FF_HOSTS = ["https://nfs.faireconomy.media", "https://cdn-nfs.faireconomy.media"];
-const CAL_CUR = ["USD"];
+const CAL_CUR = ["USD", "EUR", "GBP", "JPY", "AUD", "NZD", "CAD", "CHF"];
 let calMem = null, calFFFail = 0;
 function normEvents(list) {
   return (Array.isArray(list) ? list : []).filter(x => x && x.title && (x.date || x.time))
@@ -264,8 +277,8 @@ async function fredCalendar() {
 }
 async function aiCalendar() {
   const now = new Date(), prompt = `You are an economic calendar researcher. Today is ${now.toUTCString()}.
-Search the web for the high and medium impact economic events scheduled from now until 7 days ahead for the United States (USD). Include inflation (CPI, PPI), jobs (payrolls, unemployment, jobless claims), central bank rate decisions and speeches (Fed, BOJ), GDP, retail sales and PMIs. Use the official or consensus release times.
-Reply with only a JSON array, no markdown. Each item: {"title":"","country":"USD","impact":"High|Medium","time":"ISO 8601 UTC like 2026-11-12T13:30:00Z","forecast":"","previous":""}. Leave forecast or previous empty if unknown. Never invent an event you could not find.`;
+Search the web for the high and medium impact economic events scheduled from now until 7 days ahead for the United States (USD), Eurozone (EUR), United Kingdom (GBP), Japan (JPY), Australia (AUD), New Zealand (NZD), Canada (CAD) and Switzerland (CHF). Include inflation (CPI, PPI), jobs (payrolls, unemployment, jobless claims), central bank rate decisions and speeches (Fed, BOJ), GDP, retail sales and PMIs. Use the official or consensus release times.
+Reply with only a JSON array, no markdown. Each item: {"title":"","country":"USD|EUR|GBP|JPY|AUD|NZD|CAD|CHF","impact":"High|Medium","time":"ISO 8601 UTC like 2026-11-12T13:30:00Z","forecast":"","previous":""}. Leave forecast or previous empty if unknown. Never invent an event you could not find.`;
   const meta = {}, text = await llm([{ role: "user", content: prompt }], { json: true, search: true, maxTokens: 4000, meta });
   const events = normEvents(parseLoose(text)).filter(x => x.t > Date.now() - 3 * 3600000 && x.t < Date.now() + 8 * 86400000);
   if (!events.length) throw new Error("The AI search found no events");
@@ -293,7 +306,7 @@ async function calendar() {
 }
 
 /* ---------- auto trading through MetaApi (optional) ---------- */
-const MT_SYM = { XAUUSD: "XAUUSD", BTCUSD: "BTCUSD", NASDAQ: E.NAS_SYMBOL || "USTEC" };
+const MT_SYM = { XAUUSD: "XAUUSD", BTCUSD: "BTCUSD", NASDAQ: E.NAS_SYMBOL || "USTEC", EURUSD: "EURUSD", GBPUSD: "GBPUSD", USDJPY: "USDJPY", USDCHF: "USDCHF", USDCAD: "USDCAD", AUDUSD: "AUDUSD", NZDUSD: "NZDUSD", EURJPY: "EURJPY", GBPJPY: "GBPJPY", EURGBP: "EURGBP", AUDJPY: "AUDJPY", XAGUSD: "XAGUSD", ETHUSD: "ETHUSD" };
 const mtSymbol = pair => { if (!MT_SYM[pair]) throw new Error("Unknown pair"); return MT_SYM[pair] + (E.SYMBOL_SUFFIX || ""); };
 const MAX_LOT = parseFloat(E.MAX_LOT) > 0 ? parseFloat(E.MAX_LOT) : 0.05;
 const MAX_POS = parseInt(E.MAX_POSITIONS, 10) > 0 ? parseInt(E.MAX_POSITIONS, 10) : 3;
@@ -374,21 +387,26 @@ async function research(ev) {
   const agents = rs.map((r, i) => ({ name: AGENTS[i][0], ok: r.status === "fulfilled", note: r.status === "fulfilled" ? String(r.value).trim().slice(0, 700) : "Search failed: " + scrub(String(r.reason && r.reason.message || "")).slice(0, 90) }));
   if (!agents.some(a => a.ok)) throw new Error(agents[0].note);
   const seen = new Set(), sources = []; for (const m of metas) for (const x of (m.sources || [])) if (!seen.has(x.url) && sources.length < 6) { seen.add(x.url); sources.push(x); }
-  const pairs = "XAUUSD (Gold), BTCUSD (Bitcoin), NASDAQ (Nasdaq-100)";
+  const RP = { USD: ["XAUUSD", "EURUSD", "GBPUSD", "USDJPY", "BTCUSD", "NASDAQ"], EUR: ["EURUSD", "EURJPY", "EURGBP"], GBP: ["GBPUSD", "GBPJPY", "EURGBP"], JPY: ["USDJPY", "EURJPY", "GBPJPY", "AUDJPY"], AUD: ["AUDUSD", "AUDJPY"], NZD: ["NZDUSD"], CAD: ["USDCAD"], CHF: ["USDCHF"] }, plist = RP[ev.cur] || RP.USD, pairs = plist.join(", ");
   const chair = `You are the chair of a macro research desk. Today is ${new Date().toUTCString()}.
 Event: ${evText}.
 ${hist ? "Official data history (calculated, trust these numbers): " + hist : "No official history numbers were available for this event."}
 Research notes from four analysts:
 ${agents.map(a => `- ${a.name}: ${a.note}`).join("\n")}
 Combine all of this. Estimate the chance the actual figure comes in below, in line with, or above the forecast (integers summing to 100). Lean on the official history and the analysts' facts, not on guesses. If the notes disagree or key facts are missing, lower your confidence and keep the odds closer to even. Then say how each pair usually reacts in each case: ${pairs}. Keep every "why" under 16 words.
-Reply with only JSON, no markdown: {"forecast":"","previous":"","odds":{"below":0,"match":0,"above":0},"summary":"one or two sentences","drivers":["up to 4 short findings"],"confidence":{"level":"low|medium|high","why":"one short sentence"},"reactions":{"XAUUSD":{"below":{"dir":"BUY|SELL|CHOP","why":""},"match":{"dir":"","why":""},"above":{"dir":"","why":""}}}} with an entry for each of: XAUUSD, BTCUSD, NASDAQ.`;
+Reply with only JSON, no markdown: {"forecast":"","previous":"","odds":{"below":0,"match":0,"above":0},"summary":"one or two sentences","drivers":["up to 4 short findings"],"confidence":{"level":"low|medium|high","why":"one short sentence"},"reactions":{"XAUUSD":{"below":{"dir":"BUY|SELL|CHOP","why":""},"match":{"dir":"","why":""},"above":{"dir":"","why":""}}}} with an entry for each of: ${plist.join(", ")}.`;
   const text = await llm([{ role: "user", content: chair }], { json: true, maxTokens: 3000 });
   return { text, sources, agents, history: hist, searched: metas.some(m => (m.sources || []).length > 0) };
 }
 
 
 /* ---------- pair drivers (none are set up for gold, Bitcoin or Nasdaq) ---------- */
-const DRV = {};
+const DRV = {
+  GBPUSD: { home: "UK", bank: "Bank of England", cur: "GBP", yld: "IRLTLT01GBM156N", rate: "IR3TIB01GBM156N",
+    focus: "UK inflation and wage data, Bank of England rate path and vote split, UK gilt yields against US Treasuries, UK growth and politics or budget news, the dollar's own trend" },
+  USDJPY: { home: "Japan", bank: "Bank of Japan", cur: "JPY", yld: "IRLTLT01JPM156N", rate: "IR3TIB01JPM156N",
+    focus: "Bank of Japan policy path and any hint of a hike, the US-Japan 10-year yield gap, Japan's Ministry of Finance comments or intervention in the yen, Japan inflation, risk sentiment (yen is a safe haven)" }
+};
 async function fredLatest(id, n = 8) {
   if (!E.FRED_KEY) return [];
   try { const j = await getJson(`https://api.stlouisfed.org/fred/series/observations?series_id=${id}&api_key=${need("FRED_KEY")}&file_type=json&sort_order=desc&limit=${n}`);
@@ -414,7 +432,7 @@ async function drivers(pair) {
     const notes = rs.map((r, i) => r.status === "fulfilled" ? `- ${asks[i][0]}: ${String(r.value).trim().slice(0, 700)}` : null).filter(Boolean);
     if (!notes.length) throw new Error(String(rs[0].reason && rs[0].reason.message || "Research failed"));
     const seen = new Set(), sources = []; for (const m of metas) for (const x of (m.sources || [])) if (!seen.has(x.url) && sources.length < 5) { seen.add(x.url); sources.push(x); }
-    const up = "the dollar gaining on the yen";
+    const up = pair === "GBPUSD" ? "GBP gaining on the dollar" : "the dollar gaining on the yen";
     const chair = `You are the currency desk analyst for ${pair}. Today is ${new Date().toUTCString()}.
 Official data (calculated, trust it): ${facts.join(" ") || "none available"}
 Research notes:
@@ -471,6 +489,36 @@ async function eaRoute(req, res, p) {
   return send(res, 200, text, "text/plain");
 }
 
+
+/* ---------- relative strength: which pair and which currency is outperforming ---------- */
+const PERF = { XAUUSD: "XAU/USD", BTCUSD: "BTC/USD", NASDAQ: "QQQ", EURUSD: "EUR/USD", GBPUSD: "GBP/USD", USDJPY: "USD/JPY", USDCHF: "USD/CHF", USDCAD: "USD/CAD", AUDUSD: "AUD/USD", NZDUSD: "NZD/USD", EURJPY: "EUR/JPY", GBPJPY: "GBP/JPY", EURGBP: "EUR/GBP", AUDJPY: "AUD/JPY", XAGUSD: "XAG/USD", ETHUSD: "ETH/USD" };
+const perf = { at: 0, data: {}, running: false, err: "" };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function perfMetrics(cl) {
+  const n = cl.length; if (n < 30) return null;
+  const ema = p => { const k = 2 / (p + 1); let e = cl[0]; for (let i = 1; i < n; i++) e = cl[i] * k + e * (1 - k); return e; };
+  const e20 = ema(20), e50 = n >= 50 ? ema(50) : null, last = cl[n - 1], pc = (a, b) => (a / b - 1) * 100;
+  let g = 0, l = 0; for (let i = n - 14; i < n; i++) { const d = cl[i] - cl[i - 1]; if (d > 0) g += d; else l -= d; }
+  const rsi = l === 0 ? 100 : 100 - 100 / (1 + g / l);
+  let vs = 0; for (let i = n - 14; i < n; i++) vs += Math.abs(pc(cl[i], cl[i - 1])); const vol = vs / 14;
+  const trend = last > e20 && (e50 === null || e20 > e50) ? "up" : last < e20 && (e50 === null || e20 < e50) ? "down" : "mixed";
+  const r5 = pc(last, cl[n - 6]);
+  return { last, ret1: pc(last, cl[n - 2]), ret5: r5, ret20: pc(last, cl[n - 21]), rsi: Math.round(rsi), trend, e20, e50, vol, z5: vol > 0 ? r5 / (vol * Math.sqrt(5)) : 0 };
+}
+async function perfRun() {
+  if (perf.running) return; perf.running = true; perf.err = "";
+  try {
+    for (const [k, sym] of Object.entries(PERF)) {
+      if (perf.data[k] && Date.now() - perf.data[k].at < 3 * 3600000) continue;
+      let rows = null;
+      for (let t = 0; t < 3 && !rows; t++) { try { rows = await series(sym, "1day", 70); } catch (e) { perf.err = scrub(String(e && e.message || e)).slice(0, 100); if (/not set/.test(perf.err)) return; await sleep(20000); } }
+      if (rows && rows.length >= 30) { const m = perfMetrics(rows.map(r => r.c)); if (m) { perf.data[k] = Object.assign(m, { at: Date.now() }); perf.err = ""; } }
+      await sleep(8000);   // the free Twelve Data plan allows about 8 requests a minute
+    }
+    perf.at = Date.now();
+  } finally { perf.running = false; }
+}
+
 /* ---------- routes ---------- */
 async function api(req, res, u) {
   const p = u.pathname, q = u.searchParams;
@@ -486,6 +534,23 @@ async function api(req, res, u) {
   if (p === "/api/sentiment") return send(res, 200, await sentiment(q.get("pair")));
   if (p === "/api/drivers") return send(res, 200, await drivers(q.get("pair")));
   if (p === "/api/calendar") return send(res, 200, await calendar());
+  if (p === "/api/broker/series") {
+    const sym = String(q.get("sym") || ""), iv = q.get("interval"), size = Math.min(Math.max(+q.get("size") || 100, 30), 300);
+    const src = { "1min": ["M1", 1], "5min": ["M5", 1], "15min": ["M5", 3], "1h": ["H1", 1], "4h": ["H4", 1], "1day": ["H4", 6] }[iv];
+    if (!BOT_SYMS.has(sym) || !src) throw new Error("Unsupported broker symbol or interval");
+    const cs = brokerGet(sym, src[0], src[0] === "H4" ? 3600 : 900); if (!cs) throw new Error("No fresh " + sym + " prices from MT5 yet. Is the Expert Advisor running?");
+    let rows = cs.map(c => ({ t: c.t, o: c.o, h: c.h, l: c.l, c: c.c }));
+    if (iv === "15min" || iv === "1day") {
+      const key = t => iv === "1day" ? t.slice(0, 10) : t.slice(0, 14) + String(Math.floor(+t.slice(14, 16) / 15) * 15).padStart(2, "0"), out = [];
+      for (const r of rows) { const k = key(r.t), l = out[out.length - 1]; if (l && l.k === k) { l.h = Math.max(l.h, r.h); l.l = Math.min(l.l, r.l); l.c = r.c; } else out.push({ k, t: iv === "1day" ? k + " 00:00:00" : k + ":00", o: r.o, h: r.h, l: r.l, c: r.c }); }
+      rows = out.map(({ t, o, h, l, c }) => ({ t, o, h, l, c }));
+    }
+    return send(res, 200, { rows: rows.slice(-size), source: "broker" });
+  }
+  if (p === "/api/perf") {
+    if (!perf.running && Date.now() - perf.at > 3 * 3600000) perfRun().catch(() => {});
+    return send(res, 200, { pairs: perf.data, total: Object.keys(PERF).length, ready: Object.keys(perf.data).length, running: perf.running, err: perf.err, at: perf.at });
+  }
   if (p === "/api/bot" && req.method === "GET") return send(res, 200, BOT.status());
   if (p === "/api/bot/config" && req.method === "POST") return send(res, 200, await BOT.setConfig(await readBody(req)));
   if (p === "/api/trade/status") return send(res, 200, await tradeStatus());
@@ -504,7 +569,7 @@ async function api(req, res, u) {
   }
   if (p === "/api/research" && req.method === "POST") {
     const b = await readBody(req), t = +b.t;
-    if (typeof b.title !== "string" || b.title.length > 90 || !["USD"].includes(b.cur) || !Number.isFinite(t)) throw new Error("Bad event");
+    if (typeof b.title !== "string" || b.title.length > 90 || !["USD", "EUR", "GBP", "JPY", "AUD", "NZD", "CAD", "CHF"].includes(b.cur) || !Number.isFinite(t)) throw new Error("Bad event");
     return send(res, 200, await research({ title: b.title, cur: b.cur, impact: String(b.impact || "").slice(0, 10), t, forecast: String(b.forecast || "").slice(0, 20), previous: String(b.previous || "").slice(0, 20) }));
   }
   if (p === "/api/preds") {
