@@ -1135,8 +1135,9 @@ function logStats() {
 }
 let useServer = false;
 async function persist() {
-  if (useServer) await api("/api/log", { method: "PUT", body: JSON.stringify({ log: log.slice(0, 300) }) });
-  else store.set("c2.log", log);
+  const slim = log.slice(0, 300).map((l, i) => i < 40 || !l || !l.path ? l : Object.assign({}, l, { path: undefined, pathT: undefined }));
+  if (useServer) await api("/api/log", { method: "PUT", body: JSON.stringify({ log: slim }) });
+  else store.set("c2.log", slim);
 }
 async function addLog(A, entered) {
   const P = A.plan, e = { id: "s" + Date.now(), ts: Date.now(), entered: !!entered, enteredAt: entered ? Date.now() : null, k: A.key === "NASDAQ" && ndx && !brokerNas ? ndx.k : 1, pair: A.key, dir: A.verdict, conv: A.conv, entry: P.entry, sl: P.sl, tp1: P.tp1, tp2: P.tp2, mult: A.mult, outcome: null,
@@ -1158,7 +1159,7 @@ function renderLog() {
   el.innerHTML = log.filter(l => l && l.dir && l.pair).map(l => { const c = PAIRS[l.pair] || PAIRS.XAUUSD, d = c.dec, dt = new Date(l.ts);
     return `<article class="card entry" data-id="${esc(l.id)}"><div class="entry-top"><b class="mono">${esc(l.pair)}</b><span class="chip ${l.dir.toLowerCase()}">${esc(l.dir)}</span><span class="note mono">conv ${l.conv}</span>${l.entered && !l.outcome ? `<span class="chip track">Tracking</span>` : l.auto && l.outcome ? `<span class="chip ${l.outcome === "win" ? "buy" : "sell"}">${l.outcome === "win" ? "Won (auto)" : "Lost (auto)"}</span>` : ""}<span class="when">${dt.toLocaleDateString(undefined, { month: "short", day: "numeric" })} ${dt.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</span></div>
       <p class="entry-lv">in ${(+l.entry).toFixed(d)} · sl ${(+l.sl).toFixed(d)} · tp1 ${(+l.tp1).toFixed(d)} · tp2 ${(+l.tp2).toFixed(d)}</p>
-      ${l.entered && !l.outcome && track[l.id] ? `<p class="trk">now ${track[l.id].price.toFixed(d)} · ${track[l.id].r >= 0 ? "+" : ""}${track[l.id].r.toFixed(2)}R · checked ${hm(track[l.id].at)}</p>` : ""}${l.note ? `<p class="trk">${esc(l.note)}</p>` : ""}${l.outcome === "loss" ? `<p class="trk"><b>Why it lost:</b> ${esc(whyLost(l).join("; "))}.</p>` : ""}
+      ${l.entered && !l.outcome && track[l.id] ? `<p class="trk">now ${track[l.id].price.toFixed(d)} · ${track[l.id].r >= 0 ? "+" : ""}${track[l.id].r.toFixed(2)}R · checked ${hm(track[l.id].at)}</p>` : ""}${tradeChart(l)}${l.note ? `<p class="trk">${esc(l.note)}</p>` : ""}${l.outcome === "loss" ? `<p class="trk"><b>Why it lost:</b> ${esc(whyLost(l).join("; "))}.</p>` : ""}
       <div class="seg" role="group" aria-label="Outcome">${["win", "loss", "skip"].map(o => `<button type="button" data-o="${o}" aria-pressed="${l.outcome === o}">${o === "win" ? "Won" : o === "loss" ? "Lost" : "Skipped"}</button>`).join("")}<button type="button" data-del="1">Delete</button></div></article>`; }).join("");
   renderHitLine(); if (logTab === "stats") renderStats();
 }
@@ -1285,16 +1286,45 @@ $("#logTabs").onclick = e => { const b = e.target.closest("button"); if (!b) ret
 
 /* ---------- trade tracker ---------- */
 const track = {}; let tracking = false;
+/* ---------- profit / loss path of a trade (above the line = profit, below = loss, in R) ---------- */
+function makePath(l, cs, endMs) {
+  const t0 = l.enteredAt || l.ts, kk = +l.k || 1, buy = l.dir === "BUY", entry = +l.entry, sl = +l.sl, tp = +l.tp1, dist = Math.abs(entry - sl) || 1e-9, rT = Math.abs(tp - entry) / dist;
+  const pts = [0]; for (const c of cs) { if (c.ms <= t0 || c.ms > endMs) continue; pts.push((buy ? c.c * kk - entry : entry - c.c * kk) / dist); }
+  if (l.outcome === "win" && l.auto) pts.push(rT); else if (l.outcome === "loss" && l.auto) pts.push(-1);
+  if (pts.length < 2) return false;
+  const step = Math.max(1, Math.ceil(pts.length / 60)), out = pts.filter((_, i) => i % step === 0 || i === pts.length - 1).map(v => +Math.max(-3, Math.min(8, v)).toFixed(2));
+  l.path = out; l.pathT = [t0, endMs]; l.rT = +rT.toFixed(2); return true;
+}
+function tradeChart(l) {
+  if (!l.entered) return "";
+  if (!l.path || l.path.length < 2) return l.outcome ? "" : `<p class="trk">The profit and loss chart appears after the next price check.</p>`;
+  const W = 340, H = 150, Lp = 8, Rp = 70, T = 14, B = 18, p = l.path, rT = l.rT || 1.5, lo = Math.min(-1.15, ...p) - 0.1, hi = Math.max(rT + 0.15, ...p) + 0.1;
+  const X = i => Lp + i / (p.length - 1) * (W - Lp - Rp), Y = v => T + (1 - (v - lo) / (hi - lo)) * (H - T - B), y0 = Y(0), id = "c" + String(l.id).replace(/\W/g, "");
+  const pt = p.map((v, i) => [X(i), Y(v)]);
+  let d = `M${pt[0][0].toFixed(1)},${pt[0][1].toFixed(1)}`; for (let i = 1; i < pt.length; i++) { const m = [(pt[i - 1][0] + pt[i][0]) / 2, (pt[i - 1][1] + pt[i][1]) / 2]; d += ` Q${pt[i - 1][0].toFixed(1)},${pt[i - 1][1].toFixed(1)} ${m[0].toFixed(1)},${m[1].toFixed(1)}`; } d += ` L${pt.at(-1)[0].toFixed(1)},${pt.at(-1)[1].toFixed(1)}`;
+  const now = p.at(-1), tm = t => new Date(t).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" }), fr = v => (v > 0 ? "+" : "") + v.toFixed(1) + "R";
+  return `<svg viewBox="0 0 ${W} ${H}" class="tc" role="img" aria-label="Profit and loss of this trade over time" style="display:block;width:100%;margin:6px 0 2px;font-family:var(--font-mono)">
+    <defs><clipPath id="${id}a"><rect x="0" y="0" width="${W}" height="${y0.toFixed(1)}"/></clipPath><clipPath id="${id}b"><rect x="0" y="${y0.toFixed(1)}" width="${W}" height="${H}"/></clipPath></defs>
+    <line x1="${Lp}" x2="${W - Rp}" y1="${Y(rT).toFixed(1)}" y2="${Y(rT).toFixed(1)}" stroke="var(--buy)" stroke-dasharray="4 4" opacity=".6"/><text x="${W - Rp + 4}" y="${(Y(rT) + 3.5).toFixed(1)}" font-size="9.5" fill="var(--buy)">Target ${fr(rT)}</text>
+    <line x1="${Lp}" x2="${W - Rp}" y1="${Y(-1).toFixed(1)}" y2="${Y(-1).toFixed(1)}" stroke="var(--sell)" stroke-dasharray="4 4" opacity=".6"/><text x="${W - Rp + 4}" y="${(Y(-1) + 3.5).toFixed(1)}" font-size="9.5" fill="var(--sell)">Stop -1R</text>
+    <line x1="${Lp}" x2="${W - Rp + 10}" y1="${y0.toFixed(1)}" y2="${y0.toFixed(1)}" stroke="var(--ink,#222)" stroke-width="1.4"/><path d="M${W - Rp + 10},${(y0 - 3.5).toFixed(1)} L${W - Rp + 16},${y0.toFixed(1)} L${W - Rp + 10},${(y0 + 3.5).toFixed(1)} Z" fill="var(--ink,#222)"/><text x="${W - Rp + 20}" y="${(y0 + 3.5).toFixed(1)}" font-size="9.5" fill="var(--ink-2,#777)">Entry</text>
+    <text x="${Lp + 2}" y="${T - 3}" font-size="9.5" fill="var(--buy)">Profit</text><text x="${Lp + 2}" y="${H - B + 12}" font-size="9.5" fill="var(--sell)">Loss</text>
+    <path d="${d}" fill="none" stroke="var(--buy)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" clip-path="url(#${id}a)"/><path d="${d}" fill="none" stroke="var(--sell)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" clip-path="url(#${id}b)"/>
+    <circle cx="${pt.at(-1)[0].toFixed(1)}" cy="${pt.at(-1)[1].toFixed(1)}" r="4" fill="${now >= 0 ? "var(--buy)" : "var(--sell)"}"/>
+    <text x="${Lp + 40}" y="${H - 4}" font-size="9" fill="var(--ink-2,#777)">${esc(tm(l.pathT[0]))}</text><text x="${W - Rp}" y="${H - 4}" text-anchor="end" font-size="9" fill="var(--ink-2,#777)">${esc(tm(l.pathT[1]))}</text></svg>
+  <p class="trk">${l.outcome ? "Finished" : "Now"}: <b class="${now >= 0 ? "buy" : "sell"}">${fr(now)} ${now >= 0 ? "in profit" : "in loss"}</b> · best ${fr(Math.max(...p))} · worst ${fr(Math.min(...p))}</p>`;
+}
 async function checkTrades(manual) {
-  const msg = $("#trkMsg"), open = log.filter(l => l && l.entered && !l.outcome && PAIRS[l.pair]);
-  if (!open.length) { if (manual && msg) msg.textContent = "No open trades to check. Tap \"I entered this trade\" on a trade plan to start one."; return; }
+  const msg = $("#trkMsg"), open = log.filter(l => l && l.entered && !l.outcome && PAIRS[l.pair]), back = log.filter(l => l && l.entered && l.outcome && !l.path && PAIRS[l.pair] && Date.now() - (l.closedAt || l.ts) < 4.5 * 86400000).slice(0, 12);
+  if (!open.length && !back.length) { if (manual && msg) msg.textContent = "No open trades to check. Tap \"I entered this trade\" on a trade plan to start one."; return; }
   if (tracking) return; tracking = true; if (msg) { msg.className = "status"; msg.textContent = "Checking your open trades against the price…"; }
   let changed = false, fails = 0;
-  for (const k of [...new Set(open.map(l => l.pair))]) {
-    const mine = open.filter(l => l.pair === k), oldest = Math.min(...mine.map(l => l.enteredAt || l.ts)), size = Math.min(500, Math.max(30, Math.ceil((Date.now() - oldest) / 900000) + 8));
+  for (const k of [...new Set(open.concat(back).map(l => l.pair))]) {
+    const mine = open.filter(l => l.pair === k), old = back.filter(l => l.pair === k), oldest = Math.min(...mine.concat(old).map(l => l.enteredAt || l.ts)), size = Math.min(500, Math.max(30, Math.ceil((Date.now() - oldest) / 900000) + 8));
     let rows; try { rows = (await api(`/api/series?symbol=${encodeURIComponent(PAIRS[k].sym)}&interval=15min&size=${size}&tz=UTC`)).rows; } catch (e) { fails++; if (e.locked) showUnlock(); continue; }
     const cs = rows.map(r => ({ ms: Date.parse(String(r.t).replace(" ", "T") + "Z"), h: r.h, l: r.l, c: r.c })).filter(c => Number.isFinite(c.ms)), last = cs[cs.length - 1];
     if (!last) { fails++; continue; }
+    for (const l of old) { const t0 = l.enteredAt || l.ts; if (t0 < cs[0].ms - 900000) continue; if (makePath(l, cs, l.closedAt || last.ms)) changed = true; }
     for (const l of mine) {
       const t0 = l.enteredAt || l.ts, kk = +l.k || 1, buy = l.dir === "BUY", entry = +l.entry, sl = +l.sl, tp = +l.tp1, dist = Math.abs(entry - sl) || 1e-9;
       if (t0 < cs[0].ms - 900000) { l.note = "Older than the 5 days of price data I can check. Mark it won or lost yourself."; continue; }
@@ -1302,7 +1332,8 @@ async function checkTrades(manual) {
       for (const c of cs) { if (c.ms <= t0) continue; const s1 = buy ? c.l * kk <= sl : c.h * kk >= sl, t1 = buy ? c.h * kk >= tp : c.l * kk <= tp; if (s1 || t1) { hit = { win: t1 && !s1, both: s1 && t1, ms: c.ms }; break; } }
       if (hit) { l.outcome = hit.win ? "win" : "loss"; l.auto = true; l.closedAt = hit.ms; changed = true; delete track[l.id];
         l.note = (hit.win ? "Target 1 hit" : "Stop hit") + " around " + new Date(hit.ms).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" }) + (hit.both ? ". Stop and target were both touched in one 15-minute candle, so it is counted as a loss to be safe." : "."); }
-      else { track[l.id] = { price: last.c * kk, r: (buy ? last.c * kk - entry : entry - last.c * kk) / dist, at: last.ms }; if ((Date.now() - t0) > 72 * 3600000) l.note = "Open for over 3 days. Mark it yourself if you already closed it."; }
+      makePath(l, cs, hit ? hit.ms : last.ms); changed = true;
+      if (!hit) { track[l.id] = { price: last.c * kk, r: (buy ? last.c * kk - entry : entry - last.c * kk) / dist, at: last.ms }; if ((Date.now() - t0) > 72 * 3600000) l.note = "Open for over 3 days. Mark it yourself if you already closed it."; }
     }
   }
   if (changed) { try { await persist(); } catch {} }
