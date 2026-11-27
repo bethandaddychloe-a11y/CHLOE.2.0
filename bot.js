@@ -33,12 +33,15 @@ const FIELDS = {
   giveBack:      { lo: 0,    hi: 90,   d: 50,   step: 5,    label: 'Close early if profit falls back by (% of its best, 0 = off)', hint: 'Before trailing starts: if a position was in profit and then gives back this share of its best profit, it is closed right away at the market, on the tick.' },
   streakN:       { lo: 0,    hi: 10,   d: 2,    step: 1,    label: 'Pause after this many losing stacks in a row (0 = off)', hint: 'Losing streaks usually mean a choppy market. After this many losses in a row the bot stops opening new stacks for a while.' },
   pauseMin:      { lo: 1,    hi: 240,  d: 10,   step: 1,    label: 'How long the pause lasts (minutes)', hint: 'No new stacks for this long after a losing streak. A win clears the streak.' },
+  learnMin:      { lo: 10,   hi: 200,  d: 30,   step: 5,    label: 'Learning brain: stacks needed before it may veto (count)', hint: 'The brain studies every finished stack. It is not allowed to veto anything until it has seen this many, and has proven in its own test that it works.' },
+  learnThr:      { lo: 0.3,  hi: 0.7,  d: 0.45, step: 0.01, label: 'Learning brain: veto a setup when its win chance is below (0.45 = 45%)', hint: 'Higher is pickier. Only used once the brain is trusted.' },
+  learnEps:      { lo: 0,    hi: 50,   d: 10,   step: 5,    label: 'Learning brain: let this % of vetoed setups through so it keeps learning', hint: 'Without a few test trades it could never find out it was wrong about a setup type.' },
   cooldown:      { lo: 0,    hi: 3600, d: 20,   step: 5,    label: 'Wait after a stack closes (seconds)', hint: 'Pause before the next stack on the same pair.' },
   dayLoss:       { lo: 2,    hi: 90,   d: 25,   step: 1,    label: 'Stop for the day after losing (% of the day-start equity)', hint: 'No new stacks for the rest of the day once equity is this far below where the day began.' },
   ddStop:        { lo: 5,    hi: 90,   d: 40,   step: 1,    label: 'Stop the bot after a drop of (% from the equity peak)', hint: 'Safety stop: the bot switches itself off and (if ticked) closes everything.' },
   targetEq:      { lo: 0,    hi: 100000000, d: 0, step: 10,  label: 'Target equity ($, 0 = none)', hint: 'The bot stops and (if ticked) closes everything when equity reaches this.' },
 };
-const FLAGS = { closeOnStop: true, news: true, fast: true };
+const FLAGS = { closeOnStop: true, news: true, fast: true, learn: true };
 const KEYS = Object.keys(FIELDS);
 
 module.exports = function makeBot(D) {
@@ -126,7 +129,7 @@ module.exports = function makeBot(D) {
   }
   async function refreshViews() {
     const b = B(); let any = false;
-    for (const sym of PAIRS) { const old = b.views[sym]; if (old && Date.now() - old.at < 10000) continue; try { b.views[sym] = await viewFor(sym); any = true; } catch (e) { b.views[sym] = { dir: 'WAIT', score: 0, atr: 0, parts: [], reason: 'analysis error: ' + e.message, at: Date.now() }; } }
+    for (const sym of PAIRS) { const old = b.views[sym]; if (old && Date.now() - old.at < 10000) continue; try { b.views[sym] = applyLearner(sym, await viewFor(sym)); any = true; } catch (e) { b.views[sym] = { dir: 'WAIT', score: 0, atr: 0, parts: [], reason: 'analysis error: ' + e.message, at: Date.now() }; } }
     return any;
   }
 
@@ -142,12 +145,14 @@ module.exports = function makeBot(D) {
   /* ---------------- the Expert Advisor talks here (called from the /ea/poll route) ---------------- */
   function ingest(b0) {
     const b = B(), t = b0 && b0.bot; if (!t || typeof t !== 'object') return;
+    const prevOpen = ((b.tel && b.tel.open) || []).map(o => o.sym);
     b.tel = { at: Date.now(), lot: +t.lot || 0, tpos: +t.tpos || 0, status: String(t.status || '').slice(0, 160), eq: +t.eq || 0, dayStart: +t.dayStart || 0, peak: +t.peak || 0, open: (Array.isArray(t.open) ? t.open : []).slice(0, 40).map(o => ({ sym: String(o.sym), dir: String(o.dir), vol: +o.vol, profit: +o.profit, armed: !!o.armed })), halted: String(t.halted || ''), version: String(t.v || '') };
-    const msgs = [];
+    const msgs = []; for (const o of b.tel.open) if (!prevOpen.includes(o.sym) && L().lastAct[o.sym]) L().open[o.sym] = L().lastAct[o.sym];
     for (const c of (Array.isArray(t.cyc) ? t.cyc : []).slice(-10)) {
       const id = String(c.id); if (!id || b.seen.includes(id)) continue;
       b.seen.push(id); if (b.seen.length > 200) b.seen = b.seen.slice(-200);
       const row = { id, sym: String(c.sym), dir: String(c.dir), lots: +c.lots, n: +c.n, net: r2(+c.net || 0), at: +c.at || Date.now(), lotAfter: +c.lotAfter || 0 };
+      try { learnClose(row); } catch (e) {}
       b.cycles.push(row); if (b.cycles.length > 150) b.cycles = b.cycles.slice(-150);
       msgs.push('CHLOE BOT: ' + (NAME[row.sym] || row.sym) + ' ' + row.dir + ' stack of ' + row.n + ' x ' + row.lots.toFixed(2) + ' closed ' + (row.net >= 0 ? '+' : '') + row.net.toFixed(2) + '. Next lot ' + (row.lotAfter ? row.lotAfter.toFixed(2) : '-') + '. Equity ' + (b.tel.eq ? b.tel.eq.toFixed(2) : '-') + '.');
     }
@@ -156,6 +161,70 @@ module.exports = function makeBot(D) {
     msgs.forEach(m => { try { telegram(m); } catch (e) {} });
   }
 
+
+  /* ---------------- the learning brain ----------------
+     Every time a stack opens, Chloe remembers what the analysts looked like (agreement, session, pair, volatility ...).
+     When the stack closes she records win or loss and re-trains a small, heavily-regularised logistic model on all the stacks so far.
+     She tests herself honestly: each new result is first predicted by the model trained on the PREVIOUS results.
+     The brain can only make the bot pickier (veto a setup that looks like past losers). It never raises lot size or risk,
+     and it only starts vetoing once its own track record shows it separates winners from losers. */
+  const FN = ['bias', 'strength', 'agree', 'trend', 'bigger', 'momentum', 'structure', 'news', 'asia', 'london', 'ny', 'XAUUSD', 'BTCUSD', 'USTEC', 'vol', 'weekend'];
+  const FD = { strength: 'a strong analyst score', agree: 'many analysts agreeing', trend: 'the 1-minute trend agreeing', bigger: 'the 5-minute picture agreeing', momentum: 'momentum agreeing', structure: 'a breakout or structure signal', news: 'the news lean agreeing', asia: 'the Asian session', london: 'the London session', ny: 'the New York session', XAUUSD: 'trading Gold', BTCUSD: 'trading Bitcoin', USTEC: 'trading Nasdaq', vol: 'higher than usual volatility', weekend: 'weekends' };
+  const sig = z => 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, z))));
+  function L() { const b = B(); b.learn = b.learn || {}; const l = b.learn; l.w = l.w || FN.map(() => 0); l.samples = l.samples || []; l.pq = l.pq || []; l.atrAvg = l.atrAvg || {}; l.lastAct = l.lastAct || {}; l.open = l.open || {}; l.vetoes = l.vetoes || 0; l.passes = l.passes || 0; return l; }
+  function feats(sym, v, now) {
+    const l = L(), dir = v.dir === 'BUY' ? 1 : -1, p = v.parts || [], al = i => (p[i] ? Math.sign(p[i].v) * dir : 0);
+    const rel = v.px > 0 && v.atr > 0 ? v.atr / v.px : 0; if (rel > 0) l.atrAvg[sym] = l.atrAvg[sym] ? l.atrAvg[sym] * 0.9995 + rel * 0.0005 : rel;
+    const vol = rel > 0 && l.atrAvg[sym] > 0 ? Math.max(-1, Math.min(1, Math.log(rel / l.atrAvg[sym]))) : 0, d = new Date(now), h = d.getUTCHours(), wd = d.getUTCDay();
+    const agree = [0, 1, 2, 3, 4].filter(i => al(i) > 0).length / 5;
+    return [1, Math.min(1, Math.abs(v.score) / 100), agree, al(0), al(1), al(2), al(3), al(4), h < 7 ? 1 : 0, h >= 7 && h < 12 ? 1 : 0, h >= 12 && h < 21 ? 1 : 0, sym === 'XAUUSD' ? 1 : 0, sym === 'BTCUSD' ? 1 : 0, sym === 'USTEC' ? 1 : 0, vol, wd === 0 || wd === 6 ? 1 : 0].map(x => +x.toFixed(3));
+  }
+  const dot = (w, x) => w.reduce((s, wi, i) => s + wi * x[i], 0);
+  function fit(samples, lam) {     // ridge logistic regression by gradient descent (the bias is not penalised)
+    const n = samples.length, w = FN.map(() => 0); if (!n) return w;
+    for (let it = 0; it < 400; it++) {
+      const g = FN.map(() => 0);
+      for (const s of samples) { const e = sig(dot(w, s.x)) - s.y; for (let i = 0; i < w.length; i++) g[i] += e * s.x[i]; }
+      for (let i = 0; i < w.length; i++) w[i] -= 0.4 * (g[i] / n + (i ? lam * w[i] / n : 0));
+    }
+    return w.map(x => +x.toFixed(4));
+  }
+  function trust() {
+    const c = B().cfg, l = L(), n = l.samples.length, pq = l.pq.slice(-60);
+    if (n < c.learnMin) return { ok: false, why: 'still collecting results (' + n + ' of ' + c.learnMin + ' stacks needed before it may veto anything)' };
+    const keep = pq.filter(q => q.p >= c.learnThr), skip = pq.filter(q => q.p < c.learnThr);
+    if (skip.length < 10 || keep.length < 10) return { ok: false, why: 'not enough test results yet to prove it can tell winners from losers' };
+    const kw = keep.filter(q => q.y).length / keep.length, sw = skip.filter(q => q.y).length / skip.length, pool = pq.filter(q => q.y).length / pq.length, z = (kw - sw) / Math.sqrt(Math.max(0.01, pool * (1 - pool)) * (1 / keep.length + 1 / skip.length));
+    if (kw - sw < 0.15 || z < 1.65) return { ok: false, why: 'in its own test it did not separate winners from losers well enough yet (picked ' + Math.round(kw * 100) + '% winners, would-skip ' + Math.round(sw * 100) + '%)', kw, sw };
+    return { ok: true, why: 'trusted: in its own test the stacks it would take won ' + Math.round(kw * 100) + '% against ' + Math.round(sw * 100) + '% for those it would skip', kw, sw };
+  }
+  function applyLearner(sym, v) {      // called for every fresh view; may turn BUY/SELL into WAIT, never the other way
+    const c = B().cfg, l = L(); if (!v || (v.dir !== 'BUY' && v.dir !== 'SELL')) return v;
+    const now = Date.now(), x = feats(sym, v, now), p = sig(dot(l.w, x)); v.learnP = +p.toFixed(3);
+    if (c.learn) {
+      const t = trust();
+      if (t.ok && p < c.learnThr) {
+        const key = sym + v.dir + Math.floor(now / 600000), hsh = [...key].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) >>> 0, 7);
+        if (hsh % 100 < c.learnEps) l.passes++;          // a few vetoed setups are let through so the brain keeps learning about them
+        else { l.vetoes++; return Object.assign(v, { dir: 'WAIT', reason: 'learning brain says no: setups like this have won only about ' + Math.round(p * 100) + '% for you so far (' + v.dir + ' was ' + v.score + ')' }); }
+      }
+    }
+    l.lastAct[sym] = { x, dir: v.dir, score: v.score, at: now };
+    return v;
+  }
+  function learnClose(row) {
+    const l = L(), c = B().cfg, snap = l.open[row.sym]; delete l.open[row.sym];
+    if (!snap || Date.now() - snap.at > 6 * 3600000 || row.net === 0) return;
+    const y = row.net > 0 ? 1 : 0, p = sig(dot(l.w, snap.x));
+    l.pq.push({ p: +p.toFixed(3), y }); if (l.pq.length > 120) l.pq = l.pq.slice(-120);
+    l.samples.push({ x: snap.x, y, sym: row.sym, at: row.at }); if (l.samples.length > 300) l.samples = l.samples.slice(-300);
+    l.w = fit(l.samples, 3);
+  }
+  function learnSummary() {
+    const c = B().cfg, l = L(), n = l.samples.length, wins = l.samples.filter(s => s.y).length, t = trust();
+    const ws = FN.map((k, i) => ({ k, w: l.w[i] })).filter(o => o.k !== 'bias' && FD[o.k] && Math.abs(o.w) >= 0.15).sort((a, b) => Math.abs(b.w) - Math.abs(a.w)).slice(0, 6);
+    return { on: !!c.learn, n, wins, trusted: t.ok, why: t.why, vetoes: l.vetoes, passes: l.passes, minNeeded: c.learnMin, thr: c.learnThr, learned: n < 8 ? [] : ws.map(o => ({ good: o.w > 0, text: FD[o.k] })), baseRate: n ? Math.round(wins / n * 100) : null };
+  }
   /* only one pair at a time: keep the pair that already has a stack open, otherwise the pair the analysts agree on most */
   function focus() {
     const b = B(), c = b.cfg, open = ((b.tel && b.tel.open) || []).map(o => o.sym), now = Date.now();
@@ -189,7 +258,7 @@ module.exports = function makeBot(D) {
       focus: focus(), cfg: c, fields: FIELDS, pairs: PAIRS, names: NAME, connected: !!(tel && now - tel.at < 120000), lastSeenSec: tel ? Math.round((now - tel.at) / 1000) : null,
       configured: { ea_key: !!eaKey() }, tel, lot, posTarget: posTarget(eq || c.baseEq, c),
       views: Object.fromEntries(PAIRS.map(s => [s, b.views[s] || null])), preview: Object.fromEntries(PAIRS.map(s => [s, preview(s, eq || c.baseEq, lot)])),
-      cycles: cy.slice(-15).reverse(), stats: { n: cy.length, wins, losses: cy.length - wins, net, hit: cy.length ? Math.round(wins / cy.length * 100) : 0 },
+      learn: learnSummary(), cycles: cy.slice(-15).reverse(), stats: { n: cy.length, wins, losses: cy.length - wins, net, hit: cy.length ? Math.round(wins / cy.length * 100) : 0 },
     };
   }
   async function setConfig(b0) {
@@ -210,5 +279,5 @@ module.exports = function makeBot(D) {
     await saveState(); return { ok: true };
   }
 
-  return { init, ingest, lines, status, setConfig, scoreView, posTarget, FIELDS, PAIRS, NAME };
+  return { init, ingest, lines, status, setConfig, scoreView, posTarget, FIELDS, PAIRS, NAME, _t: { applyLearner, learnClose, learnSummary, L } };
 };

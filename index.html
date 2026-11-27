@@ -1634,6 +1634,12 @@ function renderBot() {
       <div class="stat"><dt>Net</dt><dd class="${S.net >= 0 ? "buy" : "sell"}">${botMoney(S.net)}</dd></div></dl>
     <div class="card bot-warn" style="margin-bottom:10px"><p class="note" style="color:inherit"><b>Risk.</b> The bot trades whichever MT5 account the EA is logged in to, demo or real. Its track record is short, so keep lots small and use the safety stops below. On a very small balance the risk limit allows only a few positions (and on gold, often just one).</p></div>
     <div class="card" style="margin-bottom:10px"><p class="eyebrow">Analysts now</p>${views}</div>
+    ${B.learn ? `<div class="card" style="margin-bottom:10px"><p class="eyebrow">Learning brain</p>
+      <div class="bot-row" style="margin:6px 0"><span class="chip ${B.learn.on ? (B.learn.trusted ? "buy" : "wait") : "wait"}">${!B.learn.on ? "switched off" : B.learn.trusted ? "active: vetoing" : "learning"}</span><span class="note">${B.learn.n} stacks studied · ${B.learn.baseRate === null ? "–" : B.learn.baseRate + "% won"}</span><span class="r note">${B.learn.vetoes} vetoed</span></div>
+      <div style="height:8px;background:var(--surface-2);border-radius:4px;overflow:hidden;margin:4px 0"><i style="display:block;height:100%;width:${Math.min(100, Math.round(B.learn.n / Math.max(1, B.learn.minNeeded) * 100))}%;background:var(--accent)"></i></div>
+      <p class="note">${esc(B.learn.why)}.</p>
+      ${B.learn.learned.length ? `<p class="eyebrow" style="margin:8px 0 2px">What it has learned so far</p><ul class="steps">${B.learn.learned.map(x => `<li><b class="${x.good ? "buy" : "sell"}">${x.good ? "helps" : "hurts"}</b> ${esc(x.text)}</li>`).join("")}</ul>` : ""}
+      <p class="foot">After every closed stack the brain records what the analysts looked like and whether it won, then re-trains. It tests itself on each new result before learning from it, and it can only make the bot pickier: it never raises the lot or the risk. A few vetoed setups are let through on purpose so it can find out when it was wrong. With few trades it can learn a pattern that is only luck, so treat "what it has learned" as a hint, not a rule.</p></div>` : ""}
     <div class="card" style="margin-bottom:10px"><p class="eyebrow">Open bot positions</p>${pos}</div>
     <div class="card" style="margin-bottom:10px"><p class="eyebrow">Recent stacks</p>${cyc}</div>`;
   const msg = $("#boMsg");
@@ -1648,7 +1654,7 @@ function buildBotSettings() {
   set.innerHTML = `<div class="card bot-cfg"><p class="eyebrow">Settings</p>
     <div class="bot-row" style="margin:8px 0">${pairs}</div>
     <div class="fields">${fields}</div>
-    <div style="display:grid;gap:8px;margin-top:10px"><label class="check"><input type="checkbox" id="bo_closeOnStop" ${c.closeOnStop ? "checked" : ""}>Close everything when a safety stop triggers</label><label class="check"><input type="checkbox" id="bo_fast" ${c.fast ? "checked" : ""}>Fast mode: read the 1 minute chart live (off = 5 minute chart, slower)</label><label class="check"><input type="checkbox" id="bo_news" ${c.news ? "checked" : ""}>Pause new stacks around major news</label></div>
+    <div style="display:grid;gap:8px;margin-top:10px"><label class="check"><input type="checkbox" id="bo_closeOnStop" ${c.closeOnStop ? "checked" : ""}>Close everything when a safety stop triggers</label><label class="check"><input type="checkbox" id="bo_fast" ${c.fast ? "checked" : ""}>Fast mode: read the 1 minute chart live (off = 5 minute chart, slower)</label><label class="check"><input type="checkbox" id="bo_news" ${c.news ? "checked" : ""}>Pause new stacks around major news</label><label class="check"><input type="checkbox" id="bo_learn" ${c.learn ? "checked" : ""}>Learning brain: skip setups that look like past losers (only once it has proven itself)</label></div>
     <div class="actions"><button class="btn primary" id="boSave" type="button">Save settings</button></div><p class="status" id="boSaveMsg" role="status"></p></div>
     <div class="card" style="margin-top:10px"><p class="eyebrow">How it works</p>
       <ol class="steps"><li>The five analysts (trend, bigger picture, momentum, structure, news) score each pair from −100 to 100. In fast mode they read the live 1 minute chart, with the 5 minute chart as the bigger picture. When the score passes the minimum, a stack opens.</li>
@@ -1661,7 +1667,7 @@ function buildBotSettings() {
       <li>Compile <code>ChloeEA5.mq5</code> in MetaEditor, put it on one chart, and set <code>InpServerUrl</code> to <code>https://chloe2.onrender.com</code> and <code>InpEAKey</code> to your EA_KEY. Symbol ending stays <code>m</code>.</li>
       <li>Switch on Algo Trading. This tab shows <b>EA connected</b> within seconds. Then tap Start the bot.</li></ol>${B.configured && B.configured.ea_key ? "" : `<p class="status err">EA_KEY is not set on the server yet.</p>`}</div>`;
   $("#boSave").onclick = () => {
-    const o = { pairs: [...set.querySelectorAll("[data-p]")].filter(x => x.checked).map(x => x.dataset.p), closeOnStop: $("#bo_closeOnStop").checked, news: $("#bo_news").checked, fast: $("#bo_fast").checked };
+    const o = { pairs: [...set.querySelectorAll("[data-p]")].filter(x => x.checked).map(x => x.dataset.p), closeOnStop: $("#bo_closeOnStop").checked, news: $("#bo_news").checked, fast: $("#bo_fast").checked, learn: $("#bo_learn").checked };
     set.querySelectorAll("input[data-k]").forEach(i => { o[i.dataset.k] = parseFloat(i.value); });
     botSend(o, $("#boSaveMsg"));
   };
