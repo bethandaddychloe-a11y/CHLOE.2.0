@@ -491,7 +491,7 @@ async function eaRoute(req, res, p) {
 
 
 /* ---------- relative strength: which pair and which currency is outperforming ---------- */
-const PERF = { XAUUSD: "XAU/USD", BTCUSD: "BTC/USD", NASDAQ: "QQQ", EURUSD: "EUR/USD", GBPUSD: "GBP/USD", USDJPY: "USD/JPY", USDCHF: "USD/CHF", USDCAD: "USD/CAD", AUDUSD: "AUD/USD", NZDUSD: "NZD/USD", EURJPY: "EUR/JPY", GBPJPY: "GBP/JPY", EURGBP: "EUR/GBP", AUDJPY: "AUD/JPY", XAGUSD: "XAG/USD", ETHUSD: "ETH/USD" };
+const PERF = { XAUUSD: "XAU/USD", BTCUSD: "BTC/USD", NASDAQ: "QQQ", USDCAD: "USD/CAD", USDJPY: "USD/JPY", AUDUSD: "AUD/USD" };
 const perf = { at: 0, data: {}, running: false, err: "" };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 function perfMetrics(cl) {
@@ -517,6 +517,103 @@ async function perfRun() {
     }
     perf.at = Date.now();
   } finally { perf.running = false; }
+}
+
+/* ---------- live Nasdaq-100 price (no typing): broker feed is used first by the app, this is the fallback ---------- */
+const ndxMem = { at: 0, price: 0, src: "", t: 0, err: "" };
+async function ndxQuote() {
+  if (ndxMem.price && Date.now() - ndxMem.at < 20000) return ndxMem;
+  const UA = { headers: { "user-agent": "Mozilla/5.0 (compatible; Chloe2/1.0)", accept: "application/json" } };
+  const yahoo = (sym, label) => async () => {
+    const j = await getJson(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1m&range=1d`, UA);
+    const m = j && j.chart && j.chart.result && j.chart.result[0] && j.chart.result[0].meta, p = m && +m.regularMarketPrice;
+    if (!(p > 1000)) throw new Error("no price from Yahoo " + sym);
+    return { price: p, src: label, t: (m.regularMarketTime || 0) * 1000 };
+  };
+  const stooq = async () => {
+    const r = await fetch("https://stooq.com/q/l/?s=%5Endx&f=sd2t2c&h&e=csv", UA), t = await r.text(), row = t.trim().split(/\r?\n/)[1] || "", c = row.split(","), p = parseFloat(c[3]);
+    if (!(p > 1000)) throw new Error("no price from Stooq");
+    return { price: p, src: "Stooq NDX", t: Date.parse(`${c[1]}T${c[2]}Z`) || Date.now() };
+  };
+  let err = "";
+  for (const f of [yahoo("^NDX", "Yahoo Nasdaq-100"), yahoo("NQ=F", "Yahoo Nasdaq futures"), stooq]) {
+    try { const q = await f(); Object.assign(ndxMem, q, { at: Date.now(), err: "" }); return ndxMem; } catch (e) { err += (err ? "; " : "") + e.message; }
+  }
+  ndxMem.err = err; throw new Error("Could not get a live Nasdaq price (" + err.slice(0, 120) + ")");
+}
+
+/* ---------- before-the-news lean: maths on official data, no waiting for the release ---------- */
+const mean = a => a.reduce((s, x) => s + x, 0) / (a.length || 1);
+const stdv = a => { const m = mean(a); return Math.sqrt(mean(a.map(x => (x - m) ** 2))); };
+const th = x => Math.tanh(x);
+const pnum = s => { const m = String(s || "").replace(/,/g, "").match(/(-?\d+(?:\.\d+)?)\s*([KMB%])?/i); if (!m) return null; let v = +m[1]; const u = (m[2] || "").toUpperCase(); if (u === "M") v *= 1000; if (u === "B") v *= 1e6; return v; };
+const edge = { at: 0, sig: null, events: [], err: "" };
+async function edgeSignals() {
+  const [claims, pay, ur, cpi, core, oil, be, ret, d2, dff, d10] = await Promise.all([["ICSA", 10], ["PAYEMS", 9], ["UNRATE", 6], ["CPIAUCSL", 9], ["CPILFESL", 9], ["DCOILWTICO", 30], ["T10YIE", 30], ["RSAFS", 8], ["DGS2", 8], ["DFF", 3], ["DGS10", 8]].map(([id, n]) => fredLatest(id, n)));
+  const S = {}, T = {};   // S: z scores (positive = good for the US dollar), T: plain-words facts
+  if (claims.length >= 8) { const a = mean(claims.slice(0, 4).map(x => x.v)), p = mean(claims.slice(4, 8).map(x => x.v)); S.claims = -th((a / p - 1) / 0.04); T.claims = `Jobless claims 4-week average ${Math.round(a / 1000)}K against ${Math.round(p / 1000)}K the four weeks before (${a < p ? "falling, stronger jobs" : "rising, weaker jobs"})`; S.claimsK = a / 1000; }
+  if (pay.length >= 8) { const ch = []; for (let i = 0; i < pay.length - 1; i++) ch.push(pay[i].v - pay[i + 1].v); const r3 = mean(ch.slice(0, 3)), p3 = mean(ch.slice(3, 6)), sd = Math.max(stdv(ch.slice(0, 6)), 40); S.job = th((r3 - p3) / sd); S.nfpTrend = r3; S.nfpSd = sd; T.job = `Payroll growth averaged ${Math.round(r3)}K a month over the last 3 months against ${Math.round(p3)}K the 3 before`; }
+  if (ur.length >= 4) { S.ur = -th((ur[0].v - ur[3].v) / 0.2); S.urNow = ur[0].v; T.ur = `Unemployment rate ${ur[0].v}% against ${ur[3].v}% three months ago`; }
+  const mm = a => { const o = []; for (let i = 0; i < a.length - 1; i++) o.push((a[i].v / a[i + 1].v - 1) * 100); return o; };
+  if (cpi.length >= 8) { const m = mm(cpi), r3 = mean(m.slice(0, 3)), p3 = mean(m.slice(3, 6)); S.cpi = th((r3 - p3) / 0.1); S.cpiTrend = r3; T.cpi = `Consumer prices rose ${r3.toFixed(2)}% a month on average over the last 3 months against ${p3.toFixed(2)}% before`; }
+  if (core.length >= 8) { const m = mm(core); S.coreTrend = mean(m.slice(0, 3)); }
+  if (oil.length >= 21) { const c = oil[0].v / oil[20].v - 1; S.oil = th(c / 0.08); T.oil = `Oil is ${(c * 100).toFixed(1)}% over about a month (feeds into petrol prices and headline inflation)`; }
+  if (be.length >= 21) { const c = be[0].v - be[20].v; S.be = th(c / 0.12); T.be = `10-year inflation expectations moved ${c >= 0 ? "+" : ""}${c.toFixed(2)} points in a month`; }
+  if (ret.length >= 7) { const m = mm(ret), r3 = mean(m.slice(0, 3)), p3 = mean(m.slice(3, 6)); S.ret = th((r3 - p3) / 0.4); T.ret = `Retail sales growth ${r3.toFixed(2)}% a month over 3 months against ${p3.toFixed(2)}% before`; }
+  if (d2.length >= 5 && dff.length) { const sp = d2[0].v - dff[0].v; S.rates = 0.6 * th(sp / 0.5) + 0.4 * th((d2[0].v - d2[4].v) / 0.15); T.rates = `2-year yield ${d2[0].v}% against the Fed funds rate ${dff[0].v}% (${sp > 0 ? "markets price hikes or no cuts" : "markets price cuts"}), moved ${(d2[0].v - d2[4].v).toFixed(2)} in 5 days`; }
+  return { S, T };
+}
+const cat = t => /Unemployment Claims|Jobless/i.test(t) ? "claims" : /Unemployment Rate/i.test(t) ? "ur" : /Non-Farm|Nonfarm|Employment Change|Payroll|ADP/i.test(t) ? "nfp" : /CPI|PPI|PCE|Inflation|Price Index/i.test(t) ? "infl" : /Retail Sales/i.test(t) ? "retail" : /GDP/i.test(t) ? "gdp" : /FOMC|Rate Decision|Interest Rate|Cash Rate|OCR|Overnight Rate|Rate Statement|Press Conference|Fed Chair|Speaks/i.test(t) ? "rates" : "other";
+const BETA = {   // how each pair moves when the data is US-dollar positive (+1 = fully)
+  jobs: { XAUUSD: -0.8, BTCUSD: -0.4, NASDAQ: -0.3, USDCAD: 0.6, USDJPY: 0.7, AUDUSD: -0.6 },
+  infl: { XAUUSD: -0.8, BTCUSD: -0.5, NASDAQ: -0.6, USDCAD: 0.6, USDJPY: 0.7, AUDUSD: -0.6 },
+  rates: { XAUUSD: -0.8, BTCUSD: -0.5, NASDAQ: -0.6, USDCAD: 0.6, USDJPY: 0.7, AUDUSD: -0.6 },
+  growth: { XAUUSD: -0.6, BTCUSD: -0.2, NASDAQ: 0, USDCAD: 0.6, USDJPY: 0.6, AUDUSD: -0.5 }
+};
+function eventLean(ev, G) {
+  const S = G.S, T = G.T, c = cat(ev.title), f = pnum(ev.forecast), p = pnum(ev.previous), parts = [];
+  const add = (key, w, label, z) => { if (Number.isFinite(z)) parts.push({ w, z, label }); };
+  let L = null, kind = null, conf = "Medium";
+  if (ev.cur === "USD" && c !== "other") {
+    if (c === "nfp") { kind = "jobs"; add("job", 0.35, T.job, S.job); add("claims", 0.2, T.claims, S.claims); add("ur", 0.15, T.ur, S.ur);
+      if (f != null && S.nfpTrend != null) { const z = -th((f - S.nfpTrend) / S.nfpSd); add("bar", 0.3, `Forecast ${Math.round(f)}K against a recent trend of ${Math.round(S.nfpTrend)}K, so the bar is ${f > S.nfpTrend ? "high (misses are easier)" : "low (beats are easier)"}`, z); } }
+    else if (c === "ur") { kind = "jobs"; add("ur", 0.35, T.ur, S.ur); add("claims", 0.25, T.claims, S.claims); add("job", 0.1, T.job, S.job);
+      if (f != null && S.urNow != null) add("bar", 0.3, `Forecast ${f}% against ${S.urNow}% now, so the bar is ${f > S.urNow ? "low (a lower reading is easier)" : "high"}`, th((f - S.urNow) / 0.15)); }
+    else if (c === "claims") { kind = "jobs"; add("claims", 0.45, T.claims, S.claims); add("job", 0.25, T.job, S.job);
+      if (f != null && S.claimsK) add("bar", 0.3, `Forecast ${Math.round(f)}K against a recent average of ${Math.round(S.claimsK)}K`, th((f - S.claimsK) / (0.05 * S.claimsK))); }
+    else if (c === "infl") { kind = "infl"; add("cpi", 0.3, T.cpi, S.cpi); add("oil", 0.25, T.oil, S.oil); add("be", 0.15, T.be, S.be);
+      const core = /Core/i.test(ev.title), tr = core ? S.coreTrend : S.cpiTrend;
+      if (f != null && tr != null && Math.abs(f) < 5) add("bar", 0.3, `Forecast ${f}% against a recent monthly average of ${tr.toFixed(2)}%, so the bar is ${f > tr ? "high" : "low"}`, -th((f - tr) / 0.1)); }
+    else if (c === "retail") { kind = "growth"; add("ret", 0.5, T.ret, S.ret); add("claims", 0.3, T.claims, S.claims); add("oil", 0.2, T.oil, S.oil); }
+    else if (c === "gdp") { kind = "growth"; add("ret", 0.4, T.ret, S.ret); add("job", 0.3, T.job, S.job); add("claims", 0.3, T.claims, S.claims); conf = "Low"; }
+    else if (c === "rates") { kind = "rates"; add("cpi", 0.4, T.cpi, S.cpi); add("job", 0.3, T.job, S.job); add("rates", 0.3, T.rates, S.rates); conf = "Low"; }
+  } else if (c !== "other" && f != null && p != null && !(ev.cur === "USD")) {   // other countries: no official data feed, only the consensus bar
+    kind = "fx"; conf = "Low"; const sign = (c === "ur" || c === "claims") ? 1 : -1, d = (f - p) / Math.max(Math.abs(p), 0.5);
+    add("bar", 1, `Forecast ${ev.forecast} against ${ev.previous} last time: the consensus already expects ${d > 0 ? "an increase" : d < 0 ? "a fall" : "no change"}, and releases tend to land back near the trend`, sign * th(d / 0.25) * 0.6);
+  }
+  if (!parts.length) return null;
+  const W = parts.reduce((s, x) => s + x.w, 0); L = parts.reduce((s, x) => s + x.w * x.z, 0) / W;
+  const agree = parts.filter(x => Math.sign(x.z) === Math.sign(L) && Math.abs(x.z) > 0.1).length;
+  if (conf !== "Low") conf = agree >= 3 && Math.abs(L) > 0.3 ? "High" : agree >= 2 ? "Medium" : "Low";
+  const pairs = {}, set = (k, v) => { pairs[k] = Math.max(-1, Math.min(1, v)); };
+  if (ev.cur === "USD" && BETA[kind]) for (const k in BETA[kind]) set(k, L * BETA[kind][k]);
+  else if (ev.cur === "AUD") set("AUDUSD", L);
+  else if (ev.cur === "NZD") set("AUDUSD", 0.4 * L);
+  else if (ev.cur === "CAD") set("USDCAD", -L);
+  else if (ev.cur === "JPY") set("USDJPY", -L);
+  else return null;
+  return { L, conf, kind, parts: parts.map(x => ({ w: x.w, z: +x.z.toFixed(2), text: x.label })), pairs };
+}
+async function newsEdge() {
+  if (edge.sig && Date.now() - edge.at < 2 * 3600000) return edge.out;
+  const cal = await calendar(), G = await edgeSignals(), now = Date.now(), evs = [];
+  for (const ev of cal.events) {
+    if (ev.t < now - 30 * 60000 || ev.t > now + 5 * 86400000) continue;
+    let lean = null; try { lean = eventLean(ev, G); } catch {}
+    if (lean) evs.push({ title: ev.title, cur: ev.cur, t: ev.t, impact: ev.impact, forecast: ev.forecast, previous: ev.previous, lean });
+  }
+  const out = { at: now, events: evs.slice(0, 40), facts: G.T, note: "A lean, not a forecast: it is built from official data trends and how demanding the consensus number is. It has not been back-tested." };
+  edge.sig = G; edge.at = now; edge.out = out; return out;
 }
 
 /* ---------- routes ---------- */
@@ -547,6 +644,8 @@ async function api(req, res, u) {
     }
     return send(res, 200, { rows: rows.slice(-size), source: "broker" });
   }
+  if (p === "/api/ndx") return send(res, 200, await ndxQuote());
+  if (p === "/api/newsedge") return send(res, 200, await newsEdge());
   if (p === "/api/perf") {
     if (!perf.running && Date.now() - perf.at > 3 * 3600000) perfRun().catch(() => {});
     return send(res, 200, { pairs: perf.data, total: Object.keys(PERF).length, ready: Object.keys(perf.data).length, running: perf.running, err: perf.err, at: perf.at });

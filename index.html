@@ -238,7 +238,7 @@ details.more summary{cursor:pointer;font-size:13px;color:var(--accent)}
 
 /* tabs */
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--surface);border-top:1px solid var(--line);padding-top:6px;padding-bottom:calc(6px + env(safe-area-inset-bottom,0px))}
-.tabs .col{display:grid;grid-template-columns:repeat(8,1fr);gap:0}.rk{display:grid;gap:5px}.rk-row{display:grid;grid-template-columns:62px 1fr 58px;gap:6px;align-items:center;font-family:var(--font-mono);font-size:12px}.rk-t{display:flex;height:12px;background:var(--surface-2);border-radius:4px;overflow:hidden}.rk-t i{display:block;height:100%}.rk-t i.up{background:var(--buy)}.rk-t i.dn{background:var(--sell)}.rk-v{text-align:right}.rk-why{padding:8px 0;border-top:1px solid var(--line)}.rk-why:first-of-type{border-top:0}.tab{font-size:10px!important;padding:4px 0!important}.prop-row{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;padding:5px 0;border-top:1px solid var(--line)}.prop-row:first-child{border-top:0}.prop-row .r{margin-left:auto;font-family:var(--font-mono);font-size:13px}.prog{height:8px;border-radius:6px;background:var(--surface-2);overflow:hidden;margin:6px 0}.prog i{display:block;height:100%;background:var(--accent)}
+.tabs .col{display:grid;grid-template-columns:repeat(7,1fr);gap:0}.fl{display:grid;gap:6px}.fl-r{display:grid;grid-template-columns:54px 1fr 58px 14px;gap:6px;align-items:center;font-family:var(--font-mono);font-size:12px}.fl-b{display:flex;height:14px;border-radius:4px;overflow:hidden}.fl-b i{display:block;height:100%}.fl-b i.buy{background:var(--buy)}.fl-b i.sell{background:var(--sell)}.fl-v{text-align:right}.lm{display:grid;gap:3px}.lm-r{display:grid;grid-template-columns:1fr auto;gap:2px 8px;padding:5px 8px;border-radius:6px;font-size:12px;background:var(--surface-2)}.lm-r b{font-family:var(--font-mono)}.lm-r .lm-s{grid-column:1/3;font-size:11px;opacity:.75}.lm-r.up{border-left:3px solid var(--sell)}.lm-r.dn{border-left:3px solid var(--buy)}.lm-r.swept,.lm-r.broken,.lm-r.passed{opacity:.55}.lm-r.now{background:var(--ink,#333);color:var(--bg,#fff);font-weight:600}.ed{padding:8px 0;border-top:1px solid var(--line)}.ed:first-of-type{border-top:0}.pc{padding:10px 0;border-top:1px solid var(--line)}.pc:first-of-type{border-top:0}.dots{display:flex;gap:4px;margin:4px 0}.dots i{width:10px;height:10px;border-radius:50%}.dots i.buy{background:var(--buy)}.dots i.sell{background:var(--sell)}.rk{display:grid;gap:5px}.rk-row{display:grid;grid-template-columns:62px 1fr 58px;gap:6px;align-items:center;font-family:var(--font-mono);font-size:12px}.rk-t{display:flex;height:12px;background:var(--surface-2);border-radius:4px;overflow:hidden}.rk-t i{display:block;height:100%}.rk-t i.up{background:var(--buy)}.rk-t i.dn{background:var(--sell)}.rk-v{text-align:right}.rk-why{padding:8px 0;border-top:1px solid var(--line)}.rk-why:first-of-type{border-top:0}.tab{font-size:10px!important;padding:4px 0!important}.prop-row{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;padding:5px 0;border-top:1px solid var(--line)}.prop-row:first-child{border-top:0}.prop-row .r{margin-left:auto;font-family:var(--font-mono);font-size:13px}.prog{height:8px;border-radius:6px;background:var(--surface-2);overflow:hidden;margin:6px 0}.prog i{display:block;height:100%;background:var(--accent)}
 .bot-pair{display:grid;gap:3px;padding:8px 0;border-top:1px solid var(--line)}.bot-pair:first-of-type{border-top:0}.bot-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.bot-row .r{margin-left:auto;font-family:var(--font-mono);font-size:12.5px;color:var(--muted)}.bot-warn{border-color:var(--warn);color:var(--warn)}.bot-cfg .field small{font-size:11.5px;color:var(--muted);line-height:1.3}.bot-cfg .field label{text-transform:none;letter-spacing:0;font-size:12.5px}
 .tab{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px;color:var(--muted);font-size:11.5px;cursor:pointer;border-radius:8px}
 .tab svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
@@ -281,6 +281,7 @@ details.more summary{cursor:pointer;font-size:13px;color:var(--accent)}
     <section class="view" id="v-events" aria-label="News events">
       <div class="seg" id="evTabs" role="group" aria-label="News view" style="margin-bottom:10px"><button type="button" data-t="up" aria-pressed="true">Upcoming</button><button type="button" data-t="score" aria-pressed="false">Scorecard</button></div>
       <div id="evUp">
+      <div id="edgeAll"></div>
       <div class="sec-head" style="margin-bottom:6px"><h2 class="h-sec">Upcoming news</h2><button class="btn small" id="calReload" type="button">Refresh</button></div>
       <p class="note" style="margin-bottom:10px">High and medium impact news for USD and JPY. Tap Analyse and Chloe 2 researches the event by itself, then gives BUY, SELL or WAIT for each pair. Quick mode takes a few seconds; Deep mode runs four research agents on the web and is slower. Every analysis you run before a release is saved to your Scorecard and checked automatically afterwards.</p>
       <label class="check" style="margin-bottom:10px"><input type="checkbox" id="deepOn"> Deep web research (four agents, up to 90 seconds)</label>
@@ -305,11 +306,6 @@ details.more summary{cursor:pointer;font-size:13px;color:var(--accent)}
         <button class="btn primary" id="sendBtn" type="button">Send</button>
         <button class="btn" id="stopBtn" type="button" hidden>Stop</button>
       </div>
-    </section>
-
-    <!-- AUTO -->
-    <section class="view" id="v-auto" aria-label="Auto trading">
-      <div id="autoBody"></div>
     </section>
 
     <!-- BOT -->
@@ -346,7 +342,6 @@ details.more summary{cursor:pointer;font-size:13px;color:var(--accent)}
     <button class="tab" data-v="signal" type="button"><svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 3 8-9"/></svg>Signal</button>
     <button class="tab" data-v="events" type="button"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>Events</button>
     <button class="tab" data-v="assistant" type="button"><svg viewBox="0 0 24 24"><path d="M5 6h14v10H10l-4 3v-3H5z"/></svg>Ask</button>
-    <button class="tab" data-v="auto" type="button"><svg viewBox="0 0 24 24"><path d="M13 3L5 13h6l-1 8 8-10h-6z"/></svg>Auto</button>
     <button class="tab" data-v="bot" type="button"><svg viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="11" rx="2"/><path d="M12 8V4M9 13h.01M15 13h.01M9 16h6"/></svg>Bot</button>
     <button class="tab" data-v="prop" type="button"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Prop</button>
     <button class="tab" data-v="rank" type="button"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>Rank</button>
@@ -370,20 +365,10 @@ const store = { get(k, d) { try { const v = localStorage.getItem(k); return v ==
 const PAIRS = {
   XAUUSD: { sub: "Gold", sym: "XAU/USD", dec: 2, unit: "$", pip: 1, vpp: () => 100, macro: { usd: -0.6, bond: 0.4 }, need: ["UUP"] },
   BTCUSD: { sub: "Bitcoin", sym: "BTC/USD", dec: 1, unit: "$", pip: 1, vpp: () => 1, macro: { usd: -0.4, risk: 0.6 }, need: ["UUP", "QQQ"] },
-  NASDAQ: { sub: "Nasdaq-100 (QQQ scaled to your broker)", sym: "QQQ", dec: 1, unit: "$", pip: 1, vpp: null, macro: { usd: -0.3, bond: 0.7 }, need: ["UUP"] },
-  EURUSD: { sub: "Euro-Dollar", sym: "EUR/USD", dec: 5, unit: "pips", pip: 0.0001, vpp: () => 100000, macro: { usd: -0.8 }, need: ["UUP"] },
-  GBPUSD: { sub: "Pound-Dollar", sym: "GBP/USD", dec: 5, unit: "pips", pip: 0.0001, vpp: () => 100000, macro: { usd: -0.8 }, need: ["UUP"] },
-  USDJPY: { sub: "Dollar-Yen", sym: "USD/JPY", dec: 3, unit: "pips", pip: 0.01, vpp: p => 100000 / p, macro: { usd: 0.8 }, need: ["UUP"] },
-  USDCHF: { sub: "Dollar-Franc", sym: "USD/CHF", dec: 5, unit: "pips", pip: 0.0001, vpp: p => 100000 / p, macro: { usd: 0.8 }, need: ["UUP"] },
+  NASDAQ: { sub: "Nasdaq-100", sym: "QQQ", dec: 1, unit: "$", pip: 1, vpp: null, macro: { usd: -0.3, bond: 0.7 }, need: ["UUP"] },
   USDCAD: { sub: "Dollar-Loonie", sym: "USD/CAD", dec: 5, unit: "pips", pip: 0.0001, vpp: p => 100000 / p, macro: { usd: 0.8 }, need: ["UUP"] },
   AUDUSD: { sub: "Aussie-Dollar", sym: "AUD/USD", dec: 5, unit: "pips", pip: 0.0001, vpp: () => 100000, macro: { usd: -0.8 }, need: ["UUP"] },
-  NZDUSD: { sub: "Kiwi-Dollar", sym: "NZD/USD", dec: 5, unit: "pips", pip: 0.0001, vpp: () => 100000, macro: { usd: -0.8 }, need: ["UUP"] },
-  EURJPY: { sub: "Euro-Yen", sym: "EUR/JPY", dec: 3, unit: "pips", pip: 0.01, vpp: null, macro: {}, need: [] },
-  GBPJPY: { sub: "Pound-Yen", sym: "GBP/JPY", dec: 3, unit: "pips", pip: 0.01, vpp: null, macro: {}, need: [] },
-  EURGBP: { sub: "Euro-Pound", sym: "EUR/GBP", dec: 5, unit: "pips", pip: 0.0001, vpp: null, macro: {}, need: [] },
-  AUDJPY: { sub: "Aussie-Yen", sym: "AUD/JPY", dec: 3, unit: "pips", pip: 0.01, vpp: null, macro: {}, need: [] },
-  XAGUSD: { sub: "Silver", sym: "XAG/USD", dec: 3, unit: "$", pip: 0.01, vpp: () => 5000, macro: { usd: -0.6, bond: 0.3 }, need: ["UUP"] },
-  ETHUSD: { sub: "Ethereum", sym: "ETH/USD", dec: 2, unit: "$", pip: 1, vpp: () => 1, macro: { usd: -0.4, risk: 0.6 }, need: ["UUP", "QQQ"] }
+  USDJPY: { sub: "Dollar-Yen", sym: "USD/JPY", dec: 3, unit: "pips", pip: 0.01, vpp: p => 100000 / p, macro: { usd: 0.8 }, need: ["UUP"] },
 };
 const PROXY_NAME = { UUP: "Dollar (UUP)", TLT: "Long bonds (TLT)", QQQ: "Nasdaq (QQQ)" };
 const OPT = { XAUUSD: { sym: "GLD", sign: 1 }, BTCUSD: { sym: "IBIT", sign: 1 }, NASDAQ: { sym: "QQQ", sign: 1 } };
@@ -427,7 +412,145 @@ const pctOf = s => Math.round(50 + Math.abs(s) * 50);
 const starsOf = s => Math.max(1, Math.min(5, Math.ceil(Math.abs(s) * 5)));
 const tfName = { d1: "D1", h4: "H4", h1: "H1", m15: "M15" };
 
-/* ---------- the five analysts ---------- */
+/* ---------- order flow: who is in control, buyers or sellers, on every timeframe ---------- */
+const FLOW_TF = [["m5", "5 min", 0.10, 30], ["m15", "15 min", 0.20, 30], ["h1", "1 hour", 0.30, 30], ["h4", "4 hour", 0.25, 20], ["d1", "Daily", 0.15, 15]];
+function pressureOf(rows, n) {
+  const b = rows.slice(-n); let wb = 0, ws = 0, tot = 0;
+  b.forEach((x, i) => { const rg = x.h - x.l; if (!(rg > 0)) return; const clv = (x.c - x.l) / rg, body = (x.c - x.o) / rg, u = 0.6 * clv + 0.4 * (0.5 + 0.5 * body), w = rg * Math.pow(0.93, b.length - 1 - i); wb += w * u; tot += w; });
+  return tot ? wb / tot : 0.5;
+}
+function flowScan(R) {
+  const rows = [];
+  for (const [k, label, w, n] of FLOW_TF) {
+    const c = R[k]; if (!c || c.length < n + 5) continue;
+    const buy = pressureOf(c, n), recent = pressureOf(c, 6), older = pressureOf(c.slice(0, -6), n - 6);
+    rows.push({ k, label, w, buy, sell: 1 - buy, shift: recent - older, last: recent });
+  }
+  if (!rows.length) return null;
+  const W = rows.reduce((a, r) => a + r.w, 0), score = clamp(rows.reduce((a, r) => a + r.w * (2 * r.buy - 1) * 3, 0) / W);
+  const nb = rows.filter(r => r.buy > 0.53).length, ns = rows.filter(r => r.buy < 0.47).length;
+  const short = rows.filter(r => r.k === "m5" || r.k === "m15" || r.k === "h1"), long = rows.filter(r => r.k === "h4" || r.k === "d1");
+  const sd = a => a.length ? mean(a.map(r => r.buy)) - 0.5 : 0, s1 = sd(short), s2 = sd(long);
+  let text = `Buyers lead on ${nb} of ${rows.length} timeframes and sellers on ${ns}. `;
+  if (Math.abs(s1) > 0.03 && Math.abs(s2) > 0.03 && Math.sign(s1) !== Math.sign(s2)) text += `The short timeframes lean ${s1 > 0 ? "buyers" : "sellers"} while the 4 hour and daily lean ${s2 > 0 ? "buyers" : "sellers"}, so the short move is going against the bigger one and is easier to fail. `;
+  else if (Math.abs(s1) > 0.03 && Math.abs(s2) > 0.03) text += `Short and long timeframes agree on ${s1 > 0 ? "buyers" : "sellers"}, which is what you want to see for a clean move. `;
+  const sh = rows.filter(r => Math.abs(r.shift) > 0.05); if (sh.length) text += `Pressure is shifting toward ${mean(sh.map(r => r.shift)) > 0 ? "buyers" : "sellers"} on the latest candles (${sh.map(r => r.label).join(", ")}).`;
+  return { rows, score, text: text.trim(), nb, ns };
+}
+function renderFlow() {
+  const el = $("#flowCard"), A = results[pair]; if (!el || !A || !A.flow) { if (el) el.innerHTML = ""; return; }
+  const F = A.flow;
+  el.innerHTML = `<div class="sec-head" style="margin-bottom:6px"><h2 class="h-sec">Buyers vs sellers</h2><span class="note">${F.score > 0.15 ? "buyers in control" : F.score < -0.15 ? "sellers in control" : "balanced"}</span></div>
+  <div class="fl">${F.rows.map(r => `<div class="fl-r"><span class="fl-l">${r.label}</span><span class="fl-b"><i class="buy" style="width:${(r.buy * 100).toFixed(1)}%"></i><i class="sell" style="width:${(r.sell * 100).toFixed(1)}%"></i></span><span class="fl-v"><b class="buy">${Math.round(r.buy * 100)}</b>/<b class="sell">${Math.round(r.sell * 100)}</b></span><span class="fl-a ${r.shift > 0.05 ? "buy" : r.shift < -0.05 ? "sell" : ""}" title="latest candles vs earlier">${r.shift > 0.05 ? "▲" : r.shift < -0.05 ? "▼" : "·"}</span></div>`).join("")}</div>
+  <p class="note" style="margin-top:8px">${esc(F.text)}</p>
+  <p class="foot">Green is buying pressure, red is selling pressure. Measured from where each candle closes inside its range and how strongly, weighted toward recent candles (free data has no volume). ▲▼ show the last 6 candles against the ones before. It is the sixth analyst in the council.</p>`;
+}
+
+/* ---------- liquidity map: the stop pools around price and which are still untouched ---------- */
+function liqMapOf(key, d1, h1, price, atrD) {
+  const cfg = PAIRS[key], L = [], A1 = atr(h1) || atrD / 8, last24 = h1.slice(-24);
+  const add = (n, v, side, grp) => { if (Number.isFinite(v)) L.push({ n, v, side, grp }); };
+  const pd = d1.at(-2), td = d1.at(-1); add("Previous day high", pd.h, "up", "day"); add("Previous day low", pd.l, "dn", "day"); add("Today's high", td.h, "up", "day"); add("Today's low", td.l, "dn", "day");
+  const wk = t => { const d = new Date(t.slice(0, 10) + "T00:00:00Z"), x = new Date(d); x.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return x.toISOString().slice(0, 10); };
+  const wkOf = {}; d1.forEach(r => { const w = wk(r.t); (wkOf[w] = wkOf[w] || []).push(r); });
+  const ws = Object.keys(wkOf).sort(), thisW = wk(d1.at(-1).t), prevW = ws.filter(w => w < thisW).at(-1);
+  if (prevW && wkOf[prevW].length >= 3) { add("Previous week high", hiOf(wkOf[prevW]), "up", "week"); add("Previous week low", loOf(wkOf[prevW]), "dn", "week"); }
+  const day = h1.at(-1).t.slice(0, 10), asia = h1.filter(b => b.t.slice(0, 10) === day && +b.t.slice(11, 13) < 7);
+  if (asia.length >= 3) { add("Asia session high", hiOf(asia), "up", "session"); add("Asia session low", loOf(asia), "dn", "session"); }
+  // equal highs / lows: two or more swing points within 0.15 of an hourly range of each other
+  const sw = h1.slice(-160), tolr = 0.1 * A1, hi = [], lo = [];
+  for (let i = 3; i < sw.length - 3; i++) { const w = sw.slice(i - 3, i + 4); if (sw[i].h === hiOf(w)) hi.push(sw[i].h); if (sw[i].l === loOf(w)) lo.push(sw[i].l); }
+  const clus = (a, side) => { const s = [...a].sort((x, y) => x - y), out = []; let g = []; s.forEach(v => { if (g.length && v - g[g.length - 1] > tolr) { out.push(g); g = []; } g.push(v); }); if (g.length) out.push(g); out.filter(g => g.length >= 2).forEach(g => add(`Equal ${side === "up" ? "highs" : "lows"} ×${g.length}`, mean(g), side, "equal")); };
+  clus(hi, "up"); clus(lo, "dn");
+  const step = key === "XAUUSD" ? 10 : key === "BTCUSD" ? 1000 : key === "NASDAQ" ? 100 : cfg.pip * 50;
+  for (let m = -2; m <= 2; m++) { const v = Math.round(price / step + m) * step; add("Round number", v, v > price ? "up" : "dn", "round"); }
+  const seen = [], out = [];
+  for (const x of L.sort((a, b) => Math.abs(a.v - price) - Math.abs(b.v - price))) {
+    if (Math.abs(x.v - price) > 3 * atrD) continue;
+    if (seen.some(s => Math.abs(s - x.v) < 0.15 * A1)) continue; seen.push(x.v);
+    const hiTouched = hiOf(last24) > x.v, loTouched = loOf(last24) < x.v, lc = h1.at(-1).c;
+    let st = "untouched";
+    if (x.side === "up") { if (lc > x.v) st = "broken"; else if (hiTouched) st = "swept"; } else { if (lc < x.v) st = "broken"; else if (loTouched) st = "swept"; }
+    if (x.grp === "round") st = x.side === "up" ? (lc > x.v ? "passed" : "untouched") : (lc < x.v ? "passed" : "untouched");
+    out.push(Object.assign(x, { st, dist: Math.abs(x.v - price) / atrD }));
+  }
+  const up = out.filter(x => x.v > price).sort((a, b) => a.v - b.v).slice(0, 6), dn = out.filter(x => x.v <= price).sort((a, b) => b.v - a.v).slice(0, 6);
+  return up.concat(dn).sort((a, b) => b.v - a.v);
+}
+function renderLmap() {
+  const el = $("#lmapCard"), A = results[pair]; if (!el || !A || !A.lmap) { if (el) el.innerHTML = ""; return; }
+  const cfg = PAIRS[pair], f = n => n.toFixed(cfg.dec), M = A.lmap, nu = M.filter(x => x.v > A.price && x.st === "untouched" && x.grp !== "round")[0] ? M.filter(x => x.v > A.price && x.st === "untouched" && x.grp !== "round").at(-1) : null, nd = M.filter(x => x.v < A.price && x.st === "untouched" && x.grp !== "round")[0];
+  const rows = []; let placed = false;
+  for (const x of M) { if (!placed && x.v < A.price) { rows.push(`<div class="lm-r now"><span>▶ Price now</span><b>${f(A.price)}</b><span></span></div>`); placed = true; }
+    rows.push(`<div class="lm-r ${x.side} ${x.st}"><span>${esc(x.n)}</span><b>${f(x.v)}</b><span class="lm-s">${x.st === "untouched" ? "untouched" : x.st === "swept" ? "swept, closed back" : x.st === "broken" ? "broken through" : "passed"} · ${x.dist.toFixed(1)} ATR</span></div>`); }
+  if (!placed) rows.push(`<div class="lm-r now"><span>▶ Price now</span><b>${f(A.price)}</b><span></span></div>`);
+  let read = "";
+  if (nu && nd) { const du = nu.v - A.price, dd = A.price - nd.v; read = `Nearest untouched stop pools: ${esc(nu.n)} ${f(nu.v)} above (${(du / A.atrD).toFixed(1)} ATR) and ${esc(nd.n)} ${f(nd.v)} below (${(dd / A.atrD).toFixed(1)} ATR). Price is usually drawn to the closer one first, so the ${du < dd ? "upside" : "downside"} pool is the likelier magnet.`; }
+  else if (nu) read = `Nearest untouched pool is ${esc(nu.n)} at ${f(nu.v)}, above price.`; else if (nd) read = `Nearest untouched pool is ${esc(nd.n)} at ${f(nd.v)}, below price.`;
+  el.innerHTML = `<div class="sec-head" style="margin-bottom:6px"><h2 class="h-sec">Liquidity map</h2><span class="note">stops within 3 daily ranges</span></div><div class="lm">${rows.join("")}</div>${read ? `<p class="note" style="margin-top:8px">${read}</p>` : ""}
+  <p class="foot">Highs (red rows above price) hold buy stops and short-sellers' stops, lows (green rows below) hold sell stops. "Swept, closed back" is the sweep-and-reject pattern the sniper looks for. ATR is the pair's normal daily range.</p>`;
+}
+
+/* ---------- scoring the leans: did the pair move the way Chloe leaned after the release? ---------- */
+let edgeLog = store.get("c2.edgeLog", {}), edgeScoring = false, edgeScoredAt = 0;
+function rememberEdge() {
+  if (!edgeData) return; let ch = false;
+  for (const e of edgeData.events) { const id = e.cur + "|" + e.title + "|" + e.t; if (!edgeLog[id] && e.t > Date.now()) { edgeLog[id] = { title: e.title, cur: e.cur, t: e.t, pairs: e.lean.pairs, conf: e.lean.conf }; ch = true; } }
+  const ids = Object.keys(edgeLog).sort((a, b) => edgeLog[b].t - edgeLog[a].t); if (ids.length > 80) { ids.slice(80).forEach(i => delete edgeLog[i]); ch = true; }
+  if (ch) store.set("c2.edgeLog", edgeLog);
+}
+async function scoreEdge() {
+  if (edgeScoring || Date.now() - edgeScoredAt < 20 * 60000) return; edgeScoredAt = Date.now();
+  const now = Date.now(), due = Object.values(edgeLog).filter(x => x.t < now - 2.5 * 3600000 && now - x.t < 4.8 * 86400000);
+  const need = [...new Set(due.flatMap(x => Object.keys(x.pairs).filter(p => PAIRS[p] && Math.abs(x.pairs[p]) >= 0.05 && !(x.scored && x.scored[p]))))];
+  if (!need.length) return; edgeScoring = true; let ch = false;
+  try {
+    for (const p of need.slice(0, 7)) {
+      let rows; try { rows = (await api(`/api/series?symbol=${encodeURIComponent(PAIRS[p].sym)}&interval=15min&size=500&tz=UTC`)).rows; } catch (e) { if (e.locked) break; continue; }
+      const cs = rows.map(r => ({ ms: Date.parse(String(r.t).replace(" ", "T") + "Z"), o: r.o, c: r.c })).filter(c => Number.isFinite(c.ms));
+      for (const x of due) { if (x.scored && x.scored[p] || !(p in x.pairs) || Math.abs(x.pairs[p]) < 0.05) continue;
+        const a = cs.find(c => c.ms >= x.t), b = cs.find(c => c.ms >= x.t + 2 * 3600000); if (!a || !b || a.ms > x.t + 30 * 60000) continue;
+        const mv = (b.c - a.o) / a.o * 100, thr = RX_THR[p] || 0.1; x.scored = x.scored || {};
+        x.scored[p] = { mv: +mv.toFixed(3), res: Math.abs(mv) < thr ? "flat" : (mv > 0) === (x.pairs[p] > 0) ? "hit" : "miss" }; ch = true; }
+      await new Promise(r => setTimeout(r, 1500));
+    }
+  } finally { edgeScoring = false; }
+  if (ch) { store.set("c2.edgeLog", edgeLog); renderEdge(); }
+}
+function edgeRecord() {
+  let hit = 0, miss = 0, flat = 0; const by = {};
+  for (const x of Object.values(edgeLog)) for (const p in (x.scored || {})) { const r = x.scored[p].res; if (r === "hit") hit++; else if (r === "miss") miss++; else flat++; (by[p] = by[p] || { h: 0, m: 0 })[r === "hit" ? "h" : r === "miss" ? "m" : "h"] += r === "flat" ? 0 : 1; }
+  return { hit, miss, flat, n: hit + miss + flat, by };
+}
+/* ---------- before the news: lean for this pair from official data (server does the maths) ---------- */
+let edgeData = null, edgeAt = 0, edgeErr = "";
+async function loadEdge(force) {
+  if (!force && edgeData && Date.now() - edgeAt < 30 * 60000) return;
+  try { edgeData = await api("/api/newsedge"); edgeAt = Date.now(); edgeErr = ""; rememberEdge(); scoreEdge(); } catch (e) { if (e.locked) { showUnlock(); } edgeErr = e.message || "unavailable"; }
+  renderEdge();
+}
+const SIX = ["XAUUSD", "BTCUSD", "NASDAQ", "USDCAD", "USDJPY", "AUDUSD"], SIXN = { XAUUSD: "Gold", BTCUSD: "Bitcoin", NASDAQ: "Nasdaq", USDCAD: "USDCAD", USDJPY: "USDJPY", AUDUSD: "AUDUSD" };
+function leanWord(v) { const a = Math.abs(v); if (a < 0.05) return { d: "NO EDGE", c: "wait", s: "" }; return { d: v > 0 ? "BUY" : "SELL", c: v > 0 ? "buy" : "sell", s: a < 0.15 ? "weak" : a < 0.3 ? "moderate" : "strong" }; }
+const evWhen = t => new Date(t).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" });
+function edgeEvent(e, only) {
+  const parts = e.lean.parts.slice().sort((a, b) => b.w * Math.abs(b.z) - a.w * Math.abs(a.z));
+  const cells = (only ? [only] : SIX).filter(k => e.lean.pairs[k] != null).map(k => { const w = leanWord(e.lean.pairs[k]); return `<span class="chip ${w.c}">${SIXN[k]} ${w.d}${w.s ? " · " + w.s : ""}</span>`; }).join(" ");
+  const h = Math.round((e.t - Date.now()) / 3600000);
+  return `<div class="ed"><div class="bot-row"><b>${esc(e.cur)} ${esc(e.title)}</b><span class="note">${evWhen(e.t)} · ${h > 0 ? "in " + (h >= 48 ? Math.round(h / 24) + " days" : h + " h") : "now"}</span></div>
+    <p class="note" style="margin:2px 0 6px">${e.forecast ? "Forecast " + esc(e.forecast) : ""}${e.previous ? " · previous " + esc(e.previous) : ""} · confidence <b>${esc(e.lean.conf)}</b></p><div class="chips" style="margin-bottom:6px">${cells || '<span class="note">No lean for this pair.</span>'}</div>
+    <ul class="steps">${parts.slice(0, 4).map(p => `<li>${esc(p.text)}</li>`).join("")}</ul></div>`;
+}
+function renderEdge() {
+  const A = $("#edgeCard"), B = $("#edgeAll");
+  const body = (only) => { if (!edgeData) return `<p class="status${edgeErr ? " err" : ""}">${edgeErr ? esc(edgeErr) : "Loading…"}</p>`;
+    const ev = edgeData.events.filter(e => !only || e.lean.pairs[only] != null);
+    const rec = edgeRecord(), dec = rec.hit + rec.miss, recT = rec.n ? `Track record on this phone: ${rec.hit} right, ${rec.miss} wrong, ${rec.flat} too small to count${dec >= 3 ? ` (${Math.round(rec.hit / dec * 100)}% right when the pair moved)` : ""}. Scored by whether the pair moved the leaned way in the 2 hours after the release. Too few to trust until you have 30 or more.` : "Track record: none yet. Chloe saves each lean before the release, then scores it 2 hours after, as long as you open the app at some point after the news.";
+    return (ev.length ? ev.map(e => edgeEvent(e, only)).join("") : `<p class="note">No scheduled news in the next 5 days that the model covers${only ? " for " + SIXN[only] : ""}.</p>`) + `<p class="foot">${esc(edgeData.note)} ${recT}</p>`; };
+  if (A && pair) A.innerHTML = `<div class="sec-head" style="margin-bottom:6px"><h2 class="h-sec">Upcoming news: lean for ${esc(SIXN[pair] || pair)}</h2><span class="note">before the release</span></div>${body(pair)}`;
+  if (B) B.innerHTML = `<div class="card" style="margin-bottom:10px"><div class="sec-head" style="margin-bottom:6px"><h2 class="h-sec">Before-the-news lean</h2><span class="note">next 5 days</span></div>${body(null)}</div>`;
+}
+
+/* ---------- the six analysts ---------- */
 function analyze(key) {
   const cfg = PAIRS[key], R = raw[key]; if (!R) return null;
   const { d1, h4, h1, m15 } = R, price = m15.at(-1).c, dec = cfg.dec;
@@ -512,8 +635,9 @@ function analyze(key) {
   // Risk
   const trD = trs(d1), ratioD = mean(trD.slice(-5)) / mean(trD.slice(-25)), trH = trs(h1), ratioH = mean(trH.slice(-14)) / mean(trH);
   const vol = ratioH > 1.3 ? "HIGH" : ratioH < 0.8 ? "LOW" : "NORMAL";
-  const net = 0.35 * tech + 0.2 * liq + 0.25 * macro + 0.2 * sent;
-  const votes = [voteOf(tech), voteOf(liq), voteOf(macro), voteOf(sent)];
+  const flow = flowScan(R), fs = flow ? flow.score : 0, lmap = liqMapOf(key, d1, h1, price, atrD);
+  const net = 0.3 * tech + 0.15 * liq + 0.2 * macro + 0.15 * sent + 0.2 * fs;
+  const votes = [voteOf(tech), voteOf(liq), voteOf(macro), voteOf(sent), voteOf(fs)];
   const nn = newsNear(key); let verdict = net > 0.12 ? "BUY" : net < -0.12 ? "SELL" : "WAIT"; const blocked = nn && nn.block && verdict !== "WAIT"; if (blocked) verdict = "WAIT";
   const agree = verdict === "WAIT" ? 0 : votes.filter(v => v === verdict).length;
   let rp = 0; const rn = [];
@@ -535,8 +659,9 @@ function analyze(key) {
     const sl = Math.max(2 * atrM15, 1e-9), sgn = verdict === "BUY" ? 1 : -1;
     plan = { entry: price, sl: price - sgn * sl, tp1: price + sgn * 1.5 * sl, tp2: price + sgn * 3 * sl, dist: sl };
   }
-  return { key, price, lastT: m15.at(-1).t, tf, net, verdict, conv, agree, move, vol, level, mult,
-    council: { macro: { s: macro, text: macroText, src: macroSrc }, tech: { s: tech, text: techText, src: "Twelve Data candles" }, liq: { s: liq, text: liqText, src: "Twelve Data candles" }, sent: { s: sent, text: sentText, src: sentSrc } },
+  const ctx = { tf: { d1: tf.d1, h4: tf.h4, h1: tf.h1, m15: tf.m15 }, fs, level, vol, news: !!(evToday || nn), rsi: r14, hr: new Date().getUTCHours(), votes: { macro: votes[2], tech: votes[0], liq: votes[1], sent: votes[3], flow: votes[4] } };
+  return { key, price, ctx, lastT: m15.at(-1).t, flow, lmap, tf, net, verdict, conv, agree, move, vol, level, mult,
+    council: { macro: { s: macro, text: macroText, src: macroSrc }, tech: { s: tech, text: techText, src: "Twelve Data candles" }, liq: { s: liq, text: liqText, src: "Twelve Data candles" }, sent: { s: sent, text: sentText, src: sentSrc }, flow: { s: fs, text: flow ? flow.text : "No candle data for order flow.", src: "Candle closes on 5 min to daily" } },
     riskText, drv: DV, blocked: blocked ? nn : null, pdh, pdl, hi5, lo5, plan, atrD, h1: h1.slice(-72), ev: evToday,
     bars: { m15: m15.slice(-140), h1: h1.slice(-140), h4: h4.slice(-140), d1: d1.slice(-100) },
     pools: cand, sweep: sweptLow ? { n: sweptLow.n, up: true } : sweptHigh ? { n: sweptHigh.n, up: false } : null, nearUp: above || null, nearDn: below || null };
@@ -611,20 +736,13 @@ function showUnlock() { $("#unlock").hidden = false; }
 /* ---------- Nasdaq: QQQ fund prices converted to your broker's index price ---------- */
 let ndx = store.get("c2.ndx", null); if (!ndx || !(ndx.k > 0)) ndx = null;
 const scaleRows = (rows, k) => rows.map(r => ({ t: r.t, o: r.o * k, h: r.h * k, l: r.l * k, c: r.c * k }));
+let ndxErr = "";
 function renderNdx() {
   const el = $("#ndxCal"); if (!el) return; el.hidden = pair !== "NASDAQ"; if (pair !== "NASDAQ") return;
-  if (brokerNas) { el.innerHTML = `<p class="eyebrow">Nasdaq prices</p><p class="note" style="margin:4px 0 0">Prices come straight from your broker's own USTEC chart through the Expert Advisor, so there is nothing to type in.</p>`; return; }
-  const days = ndx ? Math.floor((Date.now() - ndx.at) / 86400000) : 0;
-  el.innerHTML = `<p class="eyebrow">Nasdaq price check</p>
-    <p class="note" style="margin:4px 0 8px">${ndx ? `Prices are converted to your broker's index price (1 QQQ = ${ndx.k.toFixed(2)} points), set ${days === 0 ? "today" : days + " day" + (days > 1 ? "s" : "") + " ago"}. Set it again about once a month, or if the price looks off.` : "Free data only has the QQQ fund, which trades near $600. Your broker's Nasdaq (USTEC) trades at a much bigger number. Type your broker's price now and Chloe 2 converts every level to match."}</p>
-    <div class="fields"><div class="field"><label for="ndxIn">Your broker's USTEC price now</label><input class="inp mono" id="ndxIn" inputmode="decimal" placeholder="for example 25000"></div></div>
-    <div class="actions"><button class="btn primary" id="ndxSave" type="button">${ndx ? "Update" : "Save"} conversion</button></div><p class="status" id="ndxMsg" role="status"></p>`;
-  $("#ndxSave").onclick = async () => {
-    const v = parseFloat(String($("#ndxIn").value).replace(/,/g, "")), m = $("#ndxMsg"); if (!(v > 1000)) { m.className = "status err"; m.textContent = "Type the price shown in your broker app, for example 25000."; return; }
-    m.className = "status"; m.textContent = "Reading the QQQ price…";
-    try { const rows = await getSeries("QQQ", "15min", 30), q = rows[rows.length - 1].c; ndx = { k: v / q, at: Date.now() }; store.set("c2.ndx", ndx); delete raw.NASDAQ; delete results.NASDAQ; renderSignal(); setStatus("Conversion saved. Tap Run analysis for Nasdaq."); }
-    catch (e) { m.className = "status err"; m.textContent = e.message || "Could not read QQQ."; }
-  };
+  const note = t => { el.innerHTML = `<p class="eyebrow">Nasdaq prices</p><p class="note" style="margin:4px 0 0">${t}</p>`; };
+  if (brokerNas) return note("Prices come straight from your broker's own USTEC chart through the Expert Advisor, so they match your broker exactly. Nothing to type.");
+  if (ndx && ndx.auto) { const mins = Math.max(0, Math.round((Date.now() - ndx.at) / 60000)); return note(`Live Nasdaq-100 price ${Number(ndx.px).toLocaleString("en-US", { maximumFractionDigits: 1 })} from ${esc(ndx.src || "the web")}, read automatically ${mins < 1 ? "just now" : mins + " min ago"}. Chloe converts the QQQ candles to this price each time you run, so there is nothing to type. Once your Expert Advisor is running, your broker's own USTEC prices are used instead.`); }
+  note(ndxErr ? `Could not get a live Nasdaq price (${esc(ndxErr)}). Run the analysis again in a minute.` : "Chloe reads the live Nasdaq-100 price automatically when you run the analysis. Nothing to type.");
 }
 async function run() {
   if (!ready) { setStatus("The server has no Twelve Data key yet. Add TWELVE_KEY in Render's Environment tab.", true); return; }
@@ -634,16 +752,22 @@ async function run() {
   const R = { proxies: {} };
   try {
     setStatus(`Reading ${jobs.length} candle series…`);
-    const viaB = {};
+    const viaB = {}; let nq = null;
+    if (key === "NASDAQ") { try { nq = await api("/api/ndx"); ndxErr = ""; } catch (e) { if (e.locked) throw e; ndxErr = e.message || "no price"; } }
     const got = await Promise.all(jobs.map(async j => { if (key === "NASDAQ" && !j[0].startsWith("p:")) { try { const r = await getBrokerSeries("USTEC", j[2], j[3]); viaB[j[0]] = true; return r; } catch (e) { if (e.locked) throw e; } } return getSeries(j[1], j[2], j[3]); }));
-    if (key === "NASDAQ") { brokerNas = ["d1", "h4", "h1", "m15"].every(k => viaB[k]); renderNdx(); }
+    if (key === "NASDAQ") {
+      brokerNas = ["d1", "h4", "h1", "m15"].every(k => viaB[k]);
+      const qi = jobs.findIndex(j => j[0] === "m15"), q = got[qi] && got[qi].at(-1).c;
+      if (!brokerNas && nq && nq.price > 1000 && q > 0) { ndx = { k: nq.price / q, at: Date.now(), px: nq.price, src: nq.src, auto: true }; store.set("c2.ndx", ndx); }
+      if (!brokerNas && !(ndx && ndx.k > 0)) throw new Error("Could not get a live Nasdaq price" + (ndxErr ? ": " + ndxErr : "") + ". Try again in a minute.");
+      renderNdx();
+    }
     try { R.m5 = await getBrokerSeries(key === "NASDAQ" ? "USTEC" : key, "5min", 200); } catch (e) { if (e.locked) throw e; R.m5 = null; }
     jobs.forEach((j, i) => { if (j[0].startsWith("p:")) R.proxies[j[0].slice(2)] = got[i]; else R[j[0]] = (key === "NASDAQ" && ndx && !viaB[j[0]]) ? scaleRows(got[i], ndx.k) : got[i]; });
     setStatus("Reading macro, positioning and news feeds…");
     const f = await loadFeeds(key); R.feeds = f; raw[key] = R; results[key] = analyze(key); if (results[key]) results[key].ranAt = Date.now(); autoTrackSniper(key);
     setStatus(`Updated. Last candle ${R.m15.at(-1).t} (data time). ` + feedsNote(f), false);
     if (pair === key) renderSignal();
-    maybeAuto(key);
   } catch (e) {
     if (e.locked) { showUnlock(); setStatus("Enter your access code first.", true); }
     else setStatus(e.message || "Could not load data.", true);
@@ -668,16 +792,16 @@ function renderSignal() {
   const out = $("#signalOut"), cfg = PAIRS[pair], A = results[pair];
   if (!A) {
     out.innerHTML = `<div class="card empty"><p class="eyebrow">${esc(pair)} · ${esc(cfg.sub)}</p>
-      <h2>Four analysts vote, a fifth sizes the risk.</h2>
+      <h2>Five analysts vote, a sixth sizes the risk.</h2>
       <p class="note">Tap Run analysis to read the market. You get a direction, the reasons behind it, and a stop, target and lot size.</p>
       <ul><li><b>Macro</b><span>Yields, Fed funds, CPI and payrolls, plus dollar and bond trends.</span></li>
       <li><b>Technical</b><span>Trend and structure across D1, H4, H1 and M15.</span></li>
       <li><b>Liquidity</b><span>Where stops sit: previous-day and 5-day highs and lows, Asia range.</span></li>
       <li><b>Sentiment</b><span>Options put/call ratio, plus momentum and crowding.</span></li>
-      <li><b>Risk</b><span>Volatility, news and disagreement. Sets your size.</span></li></ul></div>`;
+      <li><b>Order flow</b><span>Buyers against sellers on every timeframe.</span></li><li><b>Risk</b><span>Volatility, news and disagreement. Sets your size.</span></li></ul></div>`;
     return;
   }
-  const names = [["Macro Economist", "macro"], ["Technical Analyst", "tech"], ["Liquidity", "liq"], ["Sentiment", "sent"]];
+  const names = [["Macro Economist", "macro"], ["Technical Analyst", "tech"], ["Liquidity", "liq"], ["Sentiment", "sent"], ["Order Flow", "flow"]];
   const votes = names.map(([, k]) => voteOf(A.council[k].s));
   const nb = votes.filter(v => v === "BUY").length, ns = votes.filter(v => v === "SELL").length;
   const cls = A.verdict === "BUY" ? "buy" : A.verdict === "SELL" ? "sell" : "wait";
@@ -697,18 +821,21 @@ function renderSignal() {
       <div><dt>Risk</dt><dd class="${A.level.toLowerCase()}">${A.level}</dd></div>
     </dl>
     <div class="bal" aria-hidden="true">${votes.map(v => `<span class="${v.toLowerCase()}"></span>`).join("")}</div>
-    <div class="meta-line"><span>Council: BUY ${nb} · SELL ${ns} · NEUTRAL ${4 - nb - ns}</span><span id="hitLine"></span></div>
+    <div class="meta-line"><span>Council: BUY ${nb} · SELL ${ns} · NEUTRAL ${5 - nb - ns}</span><span id="hitLine"></span></div>
   </section>
   <section class="card" aria-label="Council">
-    <div class="sec-head" style="margin-bottom:6px"><h2 class="h-sec">AI council</h2><span class="note">Votes weighted: technical 35, macro 25, liquidity 20, sentiment 20</span></div>${rows}
+    <div class="sec-head" style="margin-bottom:6px"><h2 class="h-sec">AI council</h2><span class="note">Votes weighted: technical 30, macro 20, order flow 20, liquidity 15, sentiment 15</span></div>${rows}
   </section>
   ${A.blocked ? `<section class="card" style="border-color:var(--warn)"><p class="note" style="color:var(--warn)"><b>Stand aside.</b> ${esc(A.blocked.cur)} ${esc(A.blocked.title)} ${A.blocked.mins >= 0 ? "lands in " + A.blocked.mins + " minutes" : "came out " + (-A.blocked.mins) + " minutes ago"}. The analysts would have said ${A.net > 0 ? "BUY" : "SELL"}, but price is too jumpy around big news, so this shows WAIT. Run again about 20 minutes after the release.</p></section>` : ""}
   ${A.drv ? driversCard(A) : ""}
   <section class="card" id="chartCard" aria-label="Chart"></section>
+  <section class="card" id="flowCard" aria-label="Buyers vs sellers"></section>
+  <section class="card" id="lmapCard" aria-label="Liquidity map"></section>
+  <section class="card" id="edgeCard" aria-label="Upcoming news lean"></section>
   <section class="card" id="sniperCard" aria-label="Sniper setup"></section>
   <section class="card" id="planCard" aria-label="Trade plan"></section>
   <p class="foot">Rule-based signals from price data. Conviction is a strength score, not a win rate, until your log proves otherwise. Not financial advice.</p>`;
-  renderPlan(); renderHitLine(); chartSel = null; renderChart(); renderSniper();
+  renderPlan(); renderHitLine(); chartSel = null; renderChart(); renderSniper(); renderFlow(); renderLmap(); renderEdge(); loadEdge();
 }
 function driversCard(A) {
   const D = A.drv, bank = A.key === "GBPUSD" ? "Bank of England" : "Bank of Japan", bar = v => `<span class="${v > 0.15 ? "buy" : v < -0.15 ? "sell" : ""}">${v > 0.15 ? "pushes up" : v < -0.15 ? "pushes down" : "neutral"}</span>`;
@@ -997,7 +1124,7 @@ async function autoTrackSniper(key) {
   try {
     const R = raw[key]; if (!R) return; const sn = sniperScan(R.m5 || R.m15, (R.h1 || []).map(x => x.c), key, evToday, "");
     if (!sn.found || !sn.ok || sn.status !== "now" || log.some(x => x && x.sk === sn.sk)) return;
-    log.unshift({ id: "s" + Date.now() + "k", ts: Date.now(), entered: true, enteredAt: Date.now(), k: key === "NASDAQ" && ndx && !brokerNas ? ndx.k : 1, pair: key, dir: sn.dir > 0 ? "BUY" : "SELL", conv: Math.round(sn.score / 8 * 100), entry: sn.entry, sl: sn.sl, tp1: sn.tp, tp2: sn.tp, mult: 1, outcome: null, rr: +sn.rr.toFixed(2), src: "sniper", sk: sn.sk, note: "Sniper setup, tracked automatically." });
+    log.unshift({ id: "s" + Date.now() + "k", ts: Date.now(), entered: true, enteredAt: Date.now(), k: key === "NASDAQ" && ndx && !brokerNas ? ndx.k : 1, pair: key, dir: sn.dir > 0 ? "BUY" : "SELL", conv: Math.round(sn.score / 8 * 100), entry: sn.entry, sl: sn.sl, tp1: sn.tp, tp2: sn.tp, mult: 1, outcome: null, rr: +sn.rr.toFixed(2), src: "sniper", sk: sn.sk, ctx: { sniper: true, score: sn.score, checks: sn.checks.map(c => [c[0], !!c[1]]), hr: new Date().getUTCHours() }, note: "Sniper setup, tracked automatically." });
     await persist(); renderLog();
   } catch (e) {}
 }
@@ -1013,7 +1140,7 @@ async function persist() {
 }
 async function addLog(A, entered) {
   const P = A.plan, e = { id: "s" + Date.now(), ts: Date.now(), entered: !!entered, enteredAt: entered ? Date.now() : null, k: A.key === "NASDAQ" && ndx && !brokerNas ? ndx.k : 1, pair: A.key, dir: A.verdict, conv: A.conv, entry: P.entry, sl: P.sl, tp1: P.tp1, tp2: P.tp2, mult: A.mult, outcome: null,
-    votes: { macro: voteOf(A.council.macro.s), tech: voteOf(A.council.tech.s), liq: voteOf(A.council.liq.s), sent: voteOf(A.council.sent.s) } };
+    votes: { macro: voteOf(A.council.macro.s), tech: voteOf(A.council.tech.s), liq: voteOf(A.council.liq.s), sent: voteOf(A.council.sent.s), flow: voteOf(A.council.flow.s) }, ctx: A.ctx };
   log.unshift(e);
   try { await persist(); } catch { log.shift(); return false; }
   renderLog(); return true;
@@ -1031,7 +1158,7 @@ function renderLog() {
   el.innerHTML = log.filter(l => l && l.dir && l.pair).map(l => { const c = PAIRS[l.pair] || PAIRS.XAUUSD, d = c.dec, dt = new Date(l.ts);
     return `<article class="card entry" data-id="${esc(l.id)}"><div class="entry-top"><b class="mono">${esc(l.pair)}</b><span class="chip ${l.dir.toLowerCase()}">${esc(l.dir)}</span><span class="note mono">conv ${l.conv}</span>${l.entered && !l.outcome ? `<span class="chip track">Tracking</span>` : l.auto && l.outcome ? `<span class="chip ${l.outcome === "win" ? "buy" : "sell"}">${l.outcome === "win" ? "Won (auto)" : "Lost (auto)"}</span>` : ""}<span class="when">${dt.toLocaleDateString(undefined, { month: "short", day: "numeric" })} ${dt.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</span></div>
       <p class="entry-lv">in ${(+l.entry).toFixed(d)} · sl ${(+l.sl).toFixed(d)} · tp1 ${(+l.tp1).toFixed(d)} · tp2 ${(+l.tp2).toFixed(d)}</p>
-      ${l.entered && !l.outcome && track[l.id] ? `<p class="trk">now ${track[l.id].price.toFixed(d)} · ${track[l.id].r >= 0 ? "+" : ""}${track[l.id].r.toFixed(2)}R · checked ${hm(track[l.id].at)}</p>` : ""}${l.note ? `<p class="trk">${esc(l.note)}</p>` : ""}
+      ${l.entered && !l.outcome && track[l.id] ? `<p class="trk">now ${track[l.id].price.toFixed(d)} · ${track[l.id].r >= 0 ? "+" : ""}${track[l.id].r.toFixed(2)}R · checked ${hm(track[l.id].at)}</p>` : ""}${l.note ? `<p class="trk">${esc(l.note)}</p>` : ""}${l.outcome === "loss" ? `<p class="trk"><b>Why it lost:</b> ${esc(whyLost(l).join("; "))}.</p>` : ""}
       <div class="seg" role="group" aria-label="Outcome">${["win", "loss", "skip"].map(o => `<button type="button" data-o="${o}" aria-pressed="${l.outcome === o}">${o === "win" ? "Won" : o === "loss" ? "Lost" : "Skipped"}</button>`).join("")}<button type="button" data-del="1">Delete</button></div></article>`; }).join("");
   renderHitLine(); if (logTab === "stats") renderStats();
 }
@@ -1049,6 +1176,43 @@ function statTable(cols, rows, tpl) {
   const head = `<div class="st-row hd" style="grid-template-columns:${tpl}">${cols.map(c => `<span>${c}</span>`).join("")}</div>`;
   return head + rows.map(r => `<div class="st-row ${r.g.n < 10 ? "low" : ""}" style="grid-template-columns:${tpl};background:linear-gradient(90deg,color-mix(in srgb,var(--buy) 16%,transparent) ${r.g.rate === null ? 0 : Math.round(r.g.rate * 100)}%,transparent 0)"><span>${esc(r.label)}</span><span>${r.g.n}</span><span>${pc(r.g.rate)}</span><span class="${r.g.net >= 0 ? "pos" : "neg"}">${rt(r.g.net)}</span>${r.extra !== undefined ? `<span>${r.extra}</span>` : ""}</div>`).join("");
 }
+/* ---------- why trades lost: read from the situation recorded at entry ---------- */
+function whyLost(l) {
+  const c = l.ctx, r = [], dir = l.dir === "BUY" ? 1 : -1, bad = [];
+  if (c && c.sniper) {
+    (c.checks || []).forEach(([n, ok]) => { if (ok) return; if (/Higher timeframe/.test(n)) r.push("went against the 1 hour trend"); else if (/session/i.test(n)) r.push("entered outside the active session"); else if (/news/i.test(n)) r.push("major news was flagged that day"); });
+    if (c.score != null && c.score <= 6) r.push(`only ${c.score} of 8 sniper checks passed (a B grade setup)`);
+  } else if (c) {
+    if (c.tf && c.tf.d1 * dir < -0.1 && c.tf.h4 * dir < -0.1) r.push("went against the daily and 4 hour trend");
+    else if (c.tf && c.tf.h1 * dir < -0.1 && c.tf.m15 * dir < -0.1) r.push("went against the 1 hour and 15 minute trend");
+    if (Number.isFinite(c.fs) && c.fs * dir < -0.15) r.push("order flow disagreed (the other side had more pressure)");
+    if (c.votes) { const agree = Object.values(c.votes).filter(v => v === l.dir).length, n = Object.keys(c.votes).length; if (agree <= Math.floor(n / 2)) r.push(`only ${agree} of ${n} analysts agreed`); }
+    if (c.news) r.push("major news was due or close that day");
+    if (c.level === "HIGH" || c.level === "MEDIUM") r.push(`the Risk analyst flagged ${c.level}`);
+    if (c.vol === "HIGH") r.push("short-term volatility was high");
+    if (Number.isFinite(c.rsi) && ((dir > 0 && c.rsi > 70) || (dir < 0 && c.rsi < 30))) r.push(`entered after an extended move (daily RSI ${Math.round(c.rsi)})`);
+    if (Number.isFinite(c.hr) && ["XAUUSD", "NASDAQ"].includes(l.pair) && (c.hr < 7 || c.hr >= 21)) r.push("entered outside London and New York hours");
+  } else if (l.votes) {
+    const n = Object.values(l.votes).filter(v => v && v !== l.dir && v !== "NEUTRAL").length; if (n >= 2) r.push(`${n} analysts voted the other way`);
+  }
+  if (Number.isFinite(+l.conv) && +l.conv < 50 && !(c && c.sniper)) r.push(`low conviction (${l.conv})`);
+  if (/both touched/.test(l.note || "")) r.push("choppy: stop and target were both touched in one candle");
+  return r.length ? r : [c || l.votes ? "no warning sign at entry: a normal loss" : "entry details were not recorded (older trade)"];
+}
+function pairCards(res) {
+  const keys = Object.keys(PAIRS).filter(k => res.some(l => l.pair === k)); if (!keys.length) return "";
+  return `<div class="st-card"><h3>Pair by pair</h3>` + keys.map(k => {
+    const L = res.filter(l => l.pair === k).sort((a, b) => cOf(a) - cOf(b)), g = grp(L), losses = L.filter(l => l.outcome === "loss"), wins = L.filter(l => l.outcome === "win");
+    const why = new Map(); losses.forEach(l => whyLost(l).forEach(x => why.set(x, (why.get(x) || 0) + 1)));
+    const top = [...why.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4), dots = L.slice(-14).map(l => `<i class="${l.outcome === "win" ? "buy" : "sell"}"></i>`).join("");
+    const aw = wins.length ? mean(wins.map(l => +l.conv || 0)) : null, al = losses.length ? mean(losses.map(l => +l.conv || 0)) : null;
+    return `<div class="pc"><div class="bot-row"><b>${esc(k)}</b><span class="note">${g.n} trades</span><span class="r ${g.net >= 0 ? "buy" : "sell"}">${rt(g.net)}</span></div>
+      <p class="note" style="margin:2px 0">${wins.length} won · ${losses.length} lost · ${pc(g.rate)} win rate${g.n < 10 ? " (too few trades to trust)" : ""}${aw !== null && al !== null ? ` · average conviction ${Math.round(aw)} on wins, ${Math.round(al)} on losses` : ""}</p>
+      <div class="dots">${dots}</div>
+      ${losses.length ? `<p class="eyebrow" style="margin:6px 0 2px">Why it lost</p><ul class="steps">${top.map(([t, n]) => `<li>${esc(t)} <span class="note">(${n} of ${losses.length} losses)</span></li>`).join("")}</ul>` : `<p class="note">No losses yet.</p>`}</div>`; }).join("") +
+    `<p class="st-note">Reasons are worked out from what Chloe recorded at entry, so one loss can have several. A reason that shows up in most losses but few wins is the one to fix.</p></div>`;
+}
+
 function renderStats() {
   const el = $("#statsWrap"), res = log.filter(l => l && (l.outcome === "win" || l.outcome === "loss") && l.pair);
   if (!res.length) { el.innerHTML = `<div class="st-card"><p class="note">No finished trades yet. Tap "I entered this trade" on a plan and Chloe 2 will build these numbers as trades hit their target or stop.</p></div>`; return; }
@@ -1074,6 +1238,7 @@ function renderStats() {
   const months = [...mm.entries()].sort((a, b) => b[0] - a[0]).slice(0, 6).map(([k, v]) => ({ label: new Date(Math.floor(k / 12), k % 12, 1).toLocaleDateString(undefined, { month: "short", year: "numeric" }), g: grp(v) }));
   const kv = (t, v) => `<div><dt>${t}</dt><dd>${v}</dd></div>`;
   el.innerHTML = `<div class="st-card"><h3>Overview</h3><dl class="plan-out">${kv("Finished trades", all.n)}${kv("Win rate", pc(all.rate))}${kv("Net result", `<span class="${all.net >= 0 ? "buy" : "sell"}">${rt(all.net)}</span>`)}${kv("Average per trade", rt(all.net / all.n))}${kv("Worst dip", "-" + dd.toFixed(1) + "R")}${kv("Longest losing run", maxStreak)}</dl>${eq}<p class="st-note">Running total in R after each finished trade.</p></div>
+    ${pairCards(res)}
     <div class="st-card"><h3>By pair</h3>${statTable(["Pair", "Trades", "Win", "Net", "Avg conv"], pairs, tplA)}</div>
     <div class="st-card"><h3>Conviction against results</h3>${statTable(["Conviction", "Trades", "Win", "Net"], bk, tplB)}<p class="st-verdict">${cv}</p></div>
     <div class="st-card"><h3>By session</h3>${statTable(["Session", "Trades", "Win", "Net", "Your time"], ses, tplA)}<p class="st-note">Sessions go by the time you entered, in UTC: Asian 00:00 to 07:00, London 07:00 to 12:00, New York 12:00 to 21:00.</p></div>
@@ -1181,8 +1346,8 @@ const sgnOf = d => { d = String(d || "").toUpperCase(); return d === "BUY" ? 1 :
 const hm = t => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const rel = ms => { const m = Math.round(ms / 60000), a = Math.abs(m), t = a < 60 ? a + "m" : a < 1440 ? Math.floor(a / 60) + "h " + (a % 60) + "m" : Math.floor(a / 1440) + "d " + Math.floor((a % 1440) / 60) + "h " + (a % 60) + "m"; return m < 0 ? t + " ago" : t; };
 const CTRY = { USD: "US", EUR: "EU", GBP: "UK", JPY: "JP", AUD: "AU", NZD: "NZ", CAD: "CA", CHF: "CH" };
-const REL = { USD: ["XAUUSD", "XAGUSD", "BTCUSD", "ETHUSD", "NASDAQ", "EURUSD", "GBPUSD", "USDJPY", "USDCHF", "USDCAD", "AUDUSD", "NZDUSD"], EUR: ["EURUSD", "EURJPY", "EURGBP"], GBP: ["GBPUSD", "GBPJPY", "EURGBP"], JPY: ["USDJPY", "EURJPY", "GBPJPY", "AUDJPY"], AUD: ["AUDUSD", "AUDJPY"], NZD: ["NZDUSD"], CAD: ["USDCAD"], CHF: ["USDCHF"] };
-const RELX = Object.assign({}, REL, { USD: ["XAUUSD", "EURUSD", "GBPUSD", "USDJPY", "BTCUSD", "NASDAQ"] });   // pairs shown in a release's reaction table
+const REL = { USD: ["XAUUSD", "BTCUSD", "NASDAQ", "USDCAD", "USDJPY", "AUDUSD"], EUR: [], GBP: [], JPY: ["USDJPY"], AUD: ["AUDUSD"], NZD: ["AUDUSD"], CAD: ["USDCAD"], CHF: [] };
+const RELX = Object.assign({}, REL, { EUR: ["XAUUSD", "NASDAQ", "USDCAD"], GBP: ["XAUUSD", "NASDAQ", "USDCAD"], JPY: ["USDJPY", "XAUUSD", "NASDAQ"], CHF: ["XAUUSD", "NASDAQ", "USDCAD"], USD: ["XAUUSD", "BTCUSD", "NASDAQ", "USDCAD", "USDJPY", "AUDUSD"] });   // pairs shown in a release's reaction table
 function evTag(t) {
   if (/cpi|inflation|ppi|pce|price/i.test(t)) return "Inflation";
   if (/non-farm|nonfarm|employment|unemployment|payroll|jobless|claims|adp|jobs/i.test(t)) return "Jobs";
@@ -1355,119 +1520,10 @@ $("#calList").onclick = e => { const b = e.target.closest(".anBtn"); if (!b) ret
 $("#deepOn").checked = !!store.get("c2.deep", false);
 $("#calReload").onclick = () => { calData = null; loadCal(); };
 
-/* ---------- auto trading (MetaApi) ---------- */
-let tradeInfo = null, tpSel = "tp1", autoCfg = Object.assign({ on: false, minConv: 40, maxRisk: 3 }, store.get("c2.auto", {})), autoLog = [];
+/* ---------- small helpers ---------- */
 function twoTap(btn, fn) {
   const orig = btn.textContent; let t = null;
   btn.onclick = () => { if (t) { clearTimeout(t); t = null; btn.textContent = orig; fn(); } else { btn.textContent = "Tap again to confirm"; t = setTimeout(() => { t = null; btn.textContent = orig; }, 4000); } };
-}
-async function loadTrade() {
-  const body = $("#autoBody"); if (!tradeInfo) body.innerHTML = `<div class="card"><p class="status">Connecting to your account…</p></div>`;
-  try { tradeInfo = await api("/api/trade/status"); }
-  catch (e) { if (e.locked) { showUnlock(); body.innerHTML = `<div class="card"><p class="status err">Enter your access code first.</p></div>`; return; } tradeInfo = { error: e.message || "Could not reach the account" }; }
-  renderAuto();
-}
-function ticket(A) {
-  const cfg = PAIRS[A.key], P = A.plan; if (!P || !cfg.vpp || !tradeInfo || !tradeInfo.configured) return null;
-  const m = planMath(A), maxLot = (tradeInfo.limits && tradeInfo.limits.maxLot) || 0.05;
-  let vol = m.lot === null ? 0.01 : Math.max(0.01, Math.floor(m.lot * 100) / 100); vol = Math.min(vol, maxLot);
-  return { vol, maxLot, tp: P[tpSel] };
-}
-function riskAt(A, vol) { const eq = (tradeInfo.account && +tradeInfo.account.equity) || acct.eq, usd = vol * A.plan.dist * PAIRS[A.key].vpp(A.plan.entry); return { usd, pct: usd / eq * 100 }; }
-function renderAuto() {
-  const body = $("#autoBody"), T = tradeInfo; if (!T) return;
-  if (T.configured === false) {
-    body.innerHTML = `<div class="card"><p class="eyebrow">Connect your account</p><h2 class="h-sec" style="margin:2px 0 6px">Not connected yet</h2>
-      <p class="note">Chloe 2 trades through MetaApi, a service that links to your Exness MT5 account from the cloud. Use a <b>demo account first</b>.</p>
-      <ol class="steps"><li>Sign up at <b>metaapi.cloud</b> and add an account: platform MT5, your Exness server name, login and trading password.</li>
-      <li>Wait until the account shows <b>Deployed</b> and <b>Connected</b>.</li>
-      <li>Copy the <b>account id</b> from that account, and your <b>API access token</b> from the token page.</li>
-      <li>In Render, open Chloe2, then Environment, and add <code>METAAPI_TOKEN</code> and <code>METAAPI_ACCOUNT_ID</code>. Save and wait for Live.</li>
-      <li>Come back here and tap Reconnect.</li></ol>
-      <div class="actions"><button class="btn primary" id="reBtn" type="button">Reconnect</button></div></div>`;
-    $("#reBtn").onclick = () => { tradeInfo = null; loadTrade(); }; return;
-  }
-  if (T.error) {
-    body.innerHTML = `<div class="card"><p class="eyebrow">Connection problem</p><p class="status err" style="margin-top:6px">${esc(T.error)}</p>
-      <p class="note">Check that your MetaApi account shows Deployed and Connected, and that the token and account id in Render are right. If your region is not New York, add <code>METAAPI_REGION</code> in Render.</p>
-      <div class="actions"><button class="btn primary" id="reBtn" type="button">Retry</button></div></div>`;
-    $("#reBtn").onclick = () => { tradeInfo = null; loadTrade(); }; return;
-  }
-  const a = T.account || {}, mode = a.mode || "UNKNOWN", mc = mode === "DEMO" ? "demo" : mode === "REAL" ? "real" : "unk";
-  const money = v => v === undefined || v === null ? "n/a" : (+v).toFixed(2) + (a.currency ? " " + a.currency : "");
-  let h = `<div class="card"><div class="sec-head"><p class="eyebrow">Account</p><span class="badge ${mc}">${mode === "UNKNOWN" ? "MODE UNKNOWN" : mode}</span></div>
-    <dl class="plan-out"><div><dt>Balance</dt><dd>${money(a.balance)}</dd></div><div><dt>Equity</dt><dd>${money(a.equity)}</dd></div>
-    <div><dt>Server</dt><dd style="font-size:13px">${esc(a.server || "n/a")}</dd></div><div><dt>Login</dt><dd>${esc(a.login || "n/a")}</dd></div></dl>
-    ${mode === "REAL" ? `<p class="note" style="margin-top:8px;color:var(--warn)">This is a real-money account. Every trade here uses real money.</p>` : ""}</div>`;
-  const A = results[pair], cfg = PAIRS[pair];
-  h += `<div class="card"><div class="sec-head"><h2 class="h-sec">Trade ticket</h2><span class="note">${pair}</span></div>`;
-  if (!A) h += `<p class="note" style="margin-top:6px">Run an analysis on the Signal tab first. The ticket fills from it.</p>`;
-  else if (!A.plan) h += `<p class="note" style="margin-top:6px">${pair} says WAIT, so there is no trade to send.</p>`;
-  else if (!cfg.vpp) h += `<p class="note" style="margin-top:6px">${pair} is read through a proxy fund, so it has no lot sizing. Auto trading is off for it.</p>`;
-  else {
-    const t = ticket(A), age = Date.now() - (A.ranAt || 0), stale = age > 20 * 60000, r0 = riskAt(A, t.vol), d = cfg.dec;
-    h += `<p class="note" style="margin-top:4px">Analysis is ${Math.round(age / 60000)} min old.</p>
-      <div class="fields" style="margin-top:10px"><div class="field"><label for="tkLot">Lot size</label><input class="inp mono" id="tkLot" inputmode="decimal" value="${t.vol.toFixed(2)}"></div>
-      <div class="field"><label>Target</label><div class="seg" id="tkTp"><button type="button" data-t="tp1" aria-pressed="${tpSel === "tp1"}">T1 · 1.5R</button><button type="button" data-t="tp2" aria-pressed="${tpSel === "tp2"}">T2 · 3R</button></div></div></div>
-      <dl class="plan-out"><div><dt>Side</dt><dd class="${A.verdict.toLowerCase()}">${A.verdict}</dd></div><div><dt>Stop</dt><dd class="sell">${A.plan.sl.toFixed(d)}</dd></div>
-      <div><dt>Target</dt><dd class="buy" id="tkTpv">${t.tp.toFixed(d)}</dd></div><div><dt>Money at risk</dt><dd id="tkRisk">$${r0.usd.toFixed(2)} · ${r0.pct.toFixed(1)}%</dd></div></dl>
-      <p class="note" id="tkWarn" style="margin-top:8px;color:var(--warn)"></p>
-      <p class="note" style="margin-top:6px">Sent as a market order with the stop and target attached. The server caps lots at ${t.maxLot}.</p>
-      <div class="actions"><button class="btn primary" id="tkSend" type="button">Send ${A.verdict} order</button></div><p class="status" id="tkMsg" role="status"></p>`;
-    h += `</div>`; body.innerHTML = h + autoCards(T);
-    const upd = () => {
-      const v = Math.round(parseFloat($("#tkLot").value) * 100) / 100, ok = v >= 0.01 && v <= t.maxLot, rr = ok ? riskAt(A, v) : null;
-      $("#tkRisk").textContent = rr ? `$${rr.usd.toFixed(2)} · ${rr.pct.toFixed(1)}%` : "n/a";
-      const w = !ok ? `Lot must be between 0.01 and ${t.maxLot}.` : stale ? "The analysis is older than 20 minutes. Run it again first." : rr.pct > autoCfg.maxRisk ? `This risks ${rr.pct.toFixed(1)}% of your equity, above the ${autoCfg.maxRisk}% limit. Use a smaller lot or skip it.` : A.level === "HIGH" ? "Risk is HIGH on this signal. Skipping is the safer choice." : "";
-      $("#tkWarn").textContent = w; const blocked = !ok || stale || rr.pct > autoCfg.maxRisk; $("#tkSend").disabled = blocked; return { v, blocked };
-    };
-    $("#tkLot").oninput = upd; upd();
-    $("#tkTp").onclick = e => { const b = e.target.closest("button"); if (!b) return; tpSel = b.dataset.t; renderAuto(); };
-    twoTap($("#tkSend"), async () => {
-      const { v, blocked } = upd(); if (blocked) return; const m = $("#tkMsg"); m.className = "status"; m.textContent = "Sending…"; $("#tkSend").disabled = true;
-      try { const r = await api("/api/trade/order", { method: "POST", body: JSON.stringify({ pair, side: A.verdict, volume: v, sl: A.plan.sl, tp: A.plan[tpSel] }) });
-        m.textContent = `Sent: ${r.side} ${r.volume} ${r.symbol}.`; try { await addLog(A, true); } catch {} setTimeout(loadTrade, 1200);
-      } catch (e) { m.className = "status err"; m.textContent = e.message || "The order was not sent."; $("#tkSend").disabled = false; }
-    });
-    wirePos(); return;
-  }
-  h += `</div>`; body.innerHTML = h + autoCards(T); wirePos();
-}
-function autoCards(T) {
-  const pos = T.positions || [];
-  let h = `<div class="card"><div class="sec-head"><h2 class="h-sec">Open trades</h2><button class="btn small" id="posReload" type="button">Refresh</button></div>`;
-  if (!pos.length) h += `<p class="note" style="margin-top:6px">No open trades.</p>`;
-  pos.forEach(p => { const pl = +p.profit || 0; h += `<div class="pos"><div class="pos-top"><b class="mono">${esc(p.symbol)}</b><span class="chip ${p.type === "BUY" ? "buy" : "sell"}">${esc(p.type)}</span><span class="mono note">${esc(p.volume)} lot</span><span class="pl ${pl >= 0 ? "buy" : "sell"}">${pl >= 0 ? "+" : ""}${pl.toFixed(2)}</span></div>
-    <p class="note mono">open ${esc(p.open)} · stop ${esc(p.sl || "none")} · target ${esc(p.tp || "none")}</p><div class="actions" style="margin:2px 0 0"><button class="btn small posClose" data-id="${esc(p.id)}" type="button">Close trade</button></div></div>`; });
-  if (pos.length) h += `<div class="actions"><button class="btn danger" id="closeAll" type="button">Close all trades</button></div>`;
-  h += `<p class="status" id="posMsg" role="status"></p></div>`;
-  h += `<div class="card"><p class="eyebrow">Auto-send</p>
-    <label class="check" style="margin-top:6px"><input type="checkbox" id="autoOn" ${autoCfg.on ? "checked" : ""}> Send trades automatically after each analysis</label>
-    <div class="fields" style="margin-top:10px"><div class="field"><label for="autoConv">Minimum conviction</label><input class="inp mono" id="autoConv" inputmode="numeric" value="${autoCfg.minConv}"></div><div class="field"><label for="autoRisk">Max risk per trade (%)</label><input class="inp mono" id="autoRisk" inputmode="decimal" value="${autoCfg.maxRisk}"></div></div>
-    <p class="note" style="margin-top:8px">It sends only when you tap Run analysis, the signal is BUY or SELL, conviction is at least your minimum, Risk is not HIGH, and the risk stays under ${autoCfg.maxRisk}%. It works only while this page is open. The risk limit also blocks manual sends from the ticket. On a small account, gold at the 0.01 minimum lot can risk more than 3% of equity, so raise the limit only if you accept that. Fully hands-free trading needs the analysis to move onto the server, which is the next upgrade.</p>
-    ${autoLog.length ? `<p class="note mono" style="margin-top:8px">${autoLog.map(esc).join("<br>")}</p>` : ""}</div>`;
-  return h;
-}
-function wirePos() {
-  const rl = $("#posReload"); if (rl) rl.onclick = () => { tradeInfo = null; loadTrade(); };
-  document.querySelectorAll(".posClose").forEach(b => twoTap(b, async () => { const m = $("#posMsg"); m.className = "status"; m.textContent = "Closing…"; try { await api("/api/trade/close", { method: "POST", body: JSON.stringify({ id: b.dataset.id }) }); m.textContent = "Closed."; setTimeout(loadTrade, 1000); } catch (e) { m.className = "status err"; m.textContent = e.message; } }));
-  const ca = $("#closeAll"); if (ca) twoTap(ca, async () => { const m = $("#posMsg"); m.className = "status"; m.textContent = "Closing everything…"; try { const r = await api("/api/trade/closeall", { method: "POST", body: "{}" }); m.textContent = `Closed ${r.closed}${r.failed ? `, ${r.failed} failed` : ""}.`; setTimeout(loadTrade, 1000); } catch (e) { m.className = "status err"; m.textContent = e.message; } });
-  const on = $("#autoOn"); if (on) on.onchange = () => {
-    if (on.checked && tradeInfo && tradeInfo.account && tradeInfo.account.mode === "REAL" && !confirm("This account uses real money. Auto-send will place real trades. Turn it on?")) { on.checked = false; return; }
-    autoCfg.on = on.checked; store.set("c2.auto", autoCfg); };
-  const ar = $("#autoRisk"); if (ar) ar.oninput = () => { const v = parseFloat(ar.value); if (v > 0 && v <= 100) { autoCfg.maxRisk = v; store.set("c2.auto", autoCfg); } };
-  const ac = $("#autoConv"); if (ac) ac.oninput = () => { const v = parseInt(ac.value, 10); if (v >= 0 && v <= 100) { autoCfg.minConv = v; store.set("c2.auto", autoCfg); } };
-}
-async function maybeAuto(key) {
-  const A = results[key]; if (!autoCfg.on || !A || !A.plan || !PAIRS[key].vpp) return;
-  const note = m => { autoLog.unshift(`${hm(Date.now())} ${key}: ${m}`); autoLog = autoLog.slice(0, 5); if (location.hash === "#auto") renderAuto(); };
-  if (!tradeInfo || tradeInfo.configured === undefined) { await loadTrade(); }
-  if (!tradeInfo || !tradeInfo.configured) return note("not connected to an account");
-  if (A.conv < autoCfg.minConv) return note(`skipped, conviction ${A.conv} is under ${autoCfg.minConv}`);
-  if (A.level === "HIGH") return note("skipped, risk is HIGH");
-  const t = ticket(A), rr = t && riskAt(A, t.vol); if (!t || rr.pct > autoCfg.maxRisk) return note(`skipped, risk ${rr ? rr.pct.toFixed(1) + "%" : "unknown"} is over the ${autoCfg.maxRisk}% limit`);
-  try { const r = await api("/api/trade/order", { method: "POST", body: JSON.stringify({ pair: key, side: A.verdict, volume: t.vol, sl: A.plan.sl, tp: A.plan.tp1 }) }); note(`sent ${r.side} ${r.volume} lot`); try { await addLog(A, true); } catch {} tradeInfo = null; loadTrade(); }
-  catch (e) { note("not sent: " + (e.message || "error")); }
 }
 /* ---------- scalping bot (the Expert Advisor on your VPS trades; this tab controls it) ---------- */
 let botInfo = null, botTimer = null;
@@ -1511,7 +1567,7 @@ function renderBot() {
       <div class="stat"><dt>Stacks</dt><dd>${S.n}</dd></div>
       <div class="stat"><dt>Win rate</dt><dd>${S.n ? S.hit + "%" : "–"}</dd></div>
       <div class="stat"><dt>Net</dt><dd class="${S.net >= 0 ? "buy" : "sell"}">${botMoney(S.net)}</dd></div></dl>
-    <div class="card bot-warn" style="margin-bottom:10px"><p class="note" style="color:inherit"><b>Unproven.</b> A scalper needs most of its stacks to win, and nobody has tested this bot on live prices yet. Run it on a <b>demo account first</b>. On a very small balance the risk limit allows only a few positions (and on gold, often just one).</p></div>
+    <div class="card bot-warn" style="margin-bottom:10px"><p class="note" style="color:inherit"><b>Risk.</b> The bot trades whichever MT5 account the EA is logged in to, demo or real. Its track record is short, so keep lots small and use the safety stops below. On a very small balance the risk limit allows only a few positions (and on gold, often just one).</p></div>
     <div class="card" style="margin-bottom:10px"><p class="eyebrow">Analysts now</p>${views}</div>
     <div class="card" style="margin-bottom:10px"><p class="eyebrow">Open bot positions</p>${pos}</div>
     <div class="card" style="margin-bottom:10px"><p class="eyebrow">Recent stacks</p>${cyc}</div>`;
@@ -1636,7 +1692,7 @@ function renderProp() {
 /* ---------- relative strength: which pair and currency is out-performing, and why ---------- */
 let rankInfo = null, rankTimer = null, rankPer = store.get("c2.rankPer", "ret5"), rankNote = null;
 const RANK_PER = { ret1: "1 day", ret5: "5 days", ret20: "20 days" };
-const FXC = ["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD"], FXP = ["EURUSD", "GBPUSD", "USDJPY", "USDCHF", "USDCAD", "AUDUSD", "NZDUSD", "EURJPY", "GBPJPY", "EURGBP", "AUDJPY"];
+const FXC = ["USD", "JPY", "CAD", "AUD"], FXP = ["USDJPY", "USDCAD", "AUDUSD"];
 function startRank() { loadRank(); if (!rankTimer) rankTimer = setInterval(() => { if (location.hash === "#rank" && !document.hidden && rankInfo && (rankInfo.running || rankInfo.ready < rankInfo.total)) loadRank(); }, 15000); }
 function stopRank() { if (rankTimer) { clearInterval(rankTimer); rankTimer = null; } }
 async function loadRank() {
@@ -1652,7 +1708,7 @@ function currencyStrength(P, key) {
 function whyRank(k, m, key, cs, P) {
   const v = m[key], up = v >= 0, rk = c => cs.findIndex(x => x.c === c) + 1, out = [];
   out.push(`${up ? "Up" : "Down"} ${Math.abs(v).toFixed(2)}% over ${RANK_PER[key]}${key === "ret5" && Math.abs(m.z5) >= 1.3 ? `, a big move: ${Math.abs(m.z5).toFixed(1)} times its usual weekly range` : key === "ret5" && Math.abs(m.z5) < 0.6 ? ", a small move for this pair" : ""}.`);
-  if (FXP.includes(k) && cs.length >= 6) { const b = k.slice(0, 3), q = k.slice(3); out.push(`${b} is #${rk(b)} and ${q} is #${rk(q)} of ${cs.length} currencies, so ${(rk(b) < rk(q)) === up ? "the currency strength explains the move" : "the move goes against the currency ranking, which makes it less reliable"}.`); }
+  if (FXP.includes(k) && cs.length >= 3) { const b = k.slice(0, 3), q = k.slice(3); out.push(`${b} is #${rk(b)} and ${q} is #${rk(q)} of ${cs.length} currencies, so ${(rk(b) < rk(q)) === up ? "the currency strength explains the move" : "the move goes against the currency ranking, which makes it less reliable"}.`); }
   else if (k === "XAUUSD" || k === "XAGUSD") { const u = rk("USD"); if (u) out.push(`Metals usually move opposite to the dollar. The dollar ranks #${u} of ${cs.length} this period${(u > cs.length / 2) === up ? ", which fits" : ", which does not fit, so something else (safe-haven buying or yields) is driving it"}.`); }
   else if (["BTCUSD", "ETHUSD", "NASDAQ"].includes(k) && P.NASDAQ && k !== "NASDAQ") out.push(`Nasdaq is ${P.NASDAQ[key] >= 0 ? "up" : "down"} ${Math.abs(P.NASDAQ[key]).toFixed(2)}% over the same time, ${(P.NASDAQ[key] >= 0) === up ? "so risk appetite is moving with it" : "so crypto is moving on its own"}.`);
   else if (k === "NASDAQ") { const u = rk("USD"); if (u) out.push(`Risk appetite and the dollar matter most. The dollar ranks #${u} of ${cs.length}.`); }
@@ -1666,17 +1722,17 @@ function renderRank() {
   const cs = currencyStrength(P, key), cmx = Math.max(...cs.map(x => Math.abs(x.v)), 0.01);
   const bar = (label, v, max, sub) => `<div class="rk-row"><span class="rk-l">${esc(label)}</span><span class="rk-t"><i class="${v >= 0 ? "up" : "dn"}" style="width:${Math.max(2, Math.abs(v) / max * 100).toFixed(1)}%;${v >= 0 ? "" : "margin-left:auto"}"></i></span><span class="rk-v ${v >= 0 ? "buy" : "sell"}">${v >= 0 ? "+" : ""}${v.toFixed(2)}%</span>${sub || ""}</div>`;
   let pairIdea = "";
-  if (cs.length >= 6) { const S = cs[0].c, W = cs[cs.length - 1].c, d = FXP.find(k => k === S + W), r = FXP.find(k => k === W + S); pairIdea = d ? `${S} is the strongest and ${W} the weakest, so the pair to lean <b class="buy">BUY</b> is <b>${d}</b>.` : r ? `${S} is the strongest and ${W} the weakest, so the pair to lean <b class="sell">SELL</b> is <b>${r}</b>.` : `${S} is the strongest and ${W} the weakest. Their pair is not in the list.`; }
+  if (cs.length >= 3) { const S = cs[0].c, W = cs[cs.length - 1].c, d = FXP.find(k => k === S + W), r = FXP.find(k => k === W + S); pairIdea = d ? `${S} is the strongest and ${W} the weakest, so the pair to lean <b class="buy">BUY</b> is <b>${d}</b>.` : r ? `${S} is the strongest and ${W} the weakest, so the pair to lean <b class="sell">SELL</b> is <b>${r}</b>.` : `${S} is the strongest and ${W} the weakest of the five currencies. Their pair is not one of your six, so lean on the dollar pairs above instead.`; }
   const top = rows.slice(0, 3), bot = rows.slice(-3).reverse(), why = (r, tag) => `<div class="rk-why"><div class="bot-row"><b>${esc(r.k)}</b><span class="chip ${tag}">${tag === "buy" ? "leading" : "lagging"}</span><span class="r ${r.v >= 0 ? "buy" : "sell"}">${r.v >= 0 ? "+" : ""}${r.v.toFixed(2)}%</span></div><ul class="steps">${whyRank(r.k, r.m, key, cs, P).map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>`;
   box.innerHTML = `<div class="card" style="margin-bottom:10px"><p class="eyebrow">Which pair is out-performing</p>
     <div class="seg" id="rkPer" style="margin:8px 0">${Object.keys(RANK_PER).map(k => `<button type="button" data-k="${k}" aria-pressed="${k === key}">${RANK_PER[k]}</button>`).join("")}</div>
     ${B.ready < B.total ? `<p class="status">Loaded ${B.ready} of ${B.total} pairs${B.err ? " (" + esc(B.err) + ")" : ""}. More are on the way.</p>` : ""}
     <div class="rk">${rows.map(r => bar(r.k, r.v, mx)).join("")}</div>
-    <p class="foot">Change in the daily close over ${RANK_PER[key]}. Green is rising and red is falling. Nasdaq uses the QQQ fund. Cross pairs and the dollar pairs are measured the same way.</p></div>
+    <p class="foot">Change in the daily close over ${RANK_PER[key]}. Green is rising and red is falling. Nasdaq uses the QQQ fund. </p></div>
     <div class="card" style="margin-bottom:10px"><p class="eyebrow">Currency strength</p>
     <div class="rk" style="margin-top:8px">${cs.map(x => bar(x.c, x.v, cmx)).join("")}</div>
     ${pairIdea ? `<p class="note" style="margin-top:8px">${pairIdea}</p>` : ""}
-    <p class="foot">Each currency's average move against the others in the forex list. A strong currency against a weak one is where trends tend to be cleanest.</p></div>
+    <p class="foot">Each currency's average move against the others in your forex pairs (USD, JPY, CAD, AUD). A strong currency against a weak one is where trends tend to be cleanest.</p></div>
     <div class="card" style="margin-bottom:10px"><p class="eyebrow">Why: leaders</p>${top.map(r => why(r, "buy")).join("")}</div>
     <div class="card" style="margin-bottom:10px"><p class="eyebrow">Why: laggards</p>${bot.map(r => why(r, "sell")).join("")}</div>
     <div class="card"><p class="eyebrow">What is behind it in the news</p>
@@ -1692,7 +1748,7 @@ function renderRank() {
   };
 }
 /* ---------- navigation ---------- */
-const VIEWS = ["signal", "events", "assistant", "auto", "bot", "prop", "rank", "log"];
+const VIEWS = ["signal", "events", "assistant", "bot", "prop", "rank", "log"];
 function go(v) { if (location.hash !== "#" + v) location.hash = v; else show(); }
 function show() {
   const v = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "signal";
@@ -1702,7 +1758,7 @@ function show() {
   if (v === "bot") startBot(); else stopBot();
   if (v === "prop") renderProp();
   if (v === "rank") startRank(); else stopRank();
-  if (v === "auto") { if (!tradeInfo) loadTrade(); else renderAuto(); }
+  if (v === "events") loadEdge();
   document.querySelectorAll(".tab").forEach(t => t.toggleAttribute("aria-current", false) || (t.dataset.v === v ? t.setAttribute("aria-current", "page") : t.removeAttribute("aria-current")));
 }
 window.addEventListener("hashchange", show);
