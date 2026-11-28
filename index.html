@@ -550,6 +550,88 @@ function renderEdge() {
   if (B) B.innerHTML = `<div class="card" style="margin-bottom:10px"><div class="sec-head" style="margin-bottom:6px"><h2 class="h-sec">Before-the-news lean</h2><span class="note">next 5 days</span></div>${body(null)}</div>`;
 }
 
+/* ---------- Chloe's own brain: learns from every finished signal in the Log ---------- */
+const BF = ["bias", "conv", "agree", "buy", "sniper", "asia", "london", "ny", "XAUUSD", "BTCUSD", "NASDAQ", "USDCAD", "USDJPY", "AUDUSD"];
+const BFD = { conv: "a high conviction score", agree: "the analysts agreeing", buy: "BUY signals (against SELL)", sniper: "sniper setups", asia: "the Asian session", london: "the London session", ny: "the New York session", XAUUSD: "Gold", BTCUSD: "Bitcoin", NASDAQ: "Nasdaq", USDCAD: "USDCAD", USDJPY: "USDJPY", AUDUSD: "AUDUSD" };
+const bsig = z => 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, z))));
+function brainX(pairKey, dir, conv, votes, ts, sniper) {
+  const v = votes ? Object.values(votes).filter(x => x && x !== "NEUTRAL") : [], agree = v.length ? v.filter(x => x === dir).length / Math.max(3, v.length) : 0.5, h = new Date(ts).getUTCHours();
+  return [1, Math.min(1, (+conv || 0) / 100), agree, dir === "BUY" ? 1 : 0, sniper ? 1 : 0, h < 7 ? 1 : 0, h >= 7 && h < 12 ? 1 : 0, h >= 12 && h < 21 ? 1 : 0, ...["XAUUSD", "BTCUSD", "NASDAQ", "USDCAD", "USDJPY", "AUDUSD"].map(k => k === pairKey ? 1 : 0)];
+}
+function brainFit(S, lam) {
+  const n = S.length, w = BF.map(() => 0); if (!n) return w;
+  for (let it = 0; it < 250; it++) { const g = BF.map(() => 0); for (const s of S) { let z = 0; for (let i = 0; i < w.length; i++) z += w[i] * s.x[i]; const e = bsig(z) - s.y; for (let i = 0; i < w.length; i++) g[i] += e * s.x[i]; } for (let i = 0; i < w.length; i++) w[i] -= 0.4 * (g[i] / n + (i ? lam * w[i] / n : 0)); }
+  return w;
+}
+let brainCache = { key: "", m: null };
+function brainModel() {
+  const S = (log || []).filter(l => l && (l.outcome === "win" || l.outcome === "loss") && PAIRS[l.pair] && l.dir).map(l => ({ x: brainX(l.pair, l.dir, l.conv, l.votes, l.ts, l.src === "sniper"), y: l.outcome === "win" ? 1 : 0, ts: l.ts })).sort((a, b) => a.ts - b.ts);
+  const key = S.length + ":" + (S.at(-1) ? S.at(-1).ts : 0) + ":" + S.reduce((a, s) => a + s.y, 0); if (brainCache.key === key) return brainCache.m;
+  const m = { n: S.length, wins: S.filter(s => s.y).length, w: null, ok: false, why: "", kw: 0, sw: 0 };
+  if (S.length >= 20) {
+    m.w = brainFit(S, 3);
+    const pq = [], from = Math.max(15, S.length - 40);
+    for (let i = from; i < S.length; i++) { const w = brainFit(S.slice(0, i), 3); let z = 0; for (let j = 0; j < w.length; j++) z += w[j] * S[i].x[j]; pq.push({ p: bsig(z), y: S[i].y }); }
+    const base = pq.reduce((a, q) => a + q.p, 0) / pq.length, keep = pq.filter(q => q.p >= base), skip = pq.filter(q => q.p < base);
+    if (keep.length >= 8 && skip.length >= 8) { m.kw = keep.filter(q => q.y).length / keep.length; m.sw = skip.filter(q => q.y).length / skip.length; const pool = pq.filter(q => q.y).length / pq.length, z = (m.kw - m.sw) / Math.sqrt(Math.max(0.01, pool * (1 - pool)) * (1 / keep.length + 1 / skip.length)); m.ok = m.kw - m.sw >= 0.15 && z >= 1.65;
+      m.why = m.ok ? `In her own test, the setups she rated higher won ${Math.round(m.kw * 100)}% against ${Math.round(m.sw * 100)}% for the ones she rated lower.` : `In her own test she could not yet tell winners from losers (higher-rated ${Math.round(m.kw * 100)}%, lower-rated ${Math.round(m.sw * 100)}%).`; }
+    else m.why = "Not enough test results yet to prove she can tell winners from losers.";
+  } else m.why = `Needs ${20 - S.length} more finished signals before she starts learning.`;
+  brainCache = { key, m }; return m;
+}
+function brainP(A) {
+  const m = brainModel(); if (!m.w || !A || (A.verdict !== "BUY" && A.verdict !== "SELL")) return null;
+  const x = brainX(A.key, A.verdict, A.conv, A.ctx ? A.ctx.votes : null, Date.now(), false); let z = 0; for (let i = 0; i < x.length; i++) z += m.w[i] * x[i]; return bsig(z);
+}
+function brainLearned(m) { if (!m.w || m.n < 20) return []; return BF.map((k, i) => ({ k, w: m.w[i] })).filter(o => BFD[o.k] && Math.abs(o.w) >= 0.2).sort((a, b) => Math.abs(b.w) - Math.abs(a.w)).slice(0, 6).map(o => ({ good: o.w > 0, text: BFD[o.k] })); }
+function renderBrain() {
+  const el = $("#brainCard"), A = results[pair]; if (!el) return; if (!A) { el.innerHTML = ""; return; }
+  const m = brainModel(), p = brainP(A), L = brainLearned(m), base = m.n ? Math.round(m.wins / m.n * 100) : null;
+  el.innerHTML = `<div class="sec-head" style="margin-bottom:6px"><h2 class="h-sec">What Chloe has learned</h2><span class="chip ${m.ok ? "buy" : "wait"}">${m.ok ? "proven in her own test" : "still learning"}</span></div>
+  ${p != null ? `<p class="note" style="font-size:14px">Setups like this one have won about <b class="${p >= 0.5 ? "buy" : "sell"}">${Math.round(p * 100)}%</b> of the time in your Log (${m.n} finished signals, ${base}% won overall).${m.ok && p < 0.4 ? ` <b class="sell">Her own history says be careful with this one.</b>` : ""}</p>` : `<p class="note">${esc(m.why)}</p>`}
+  ${p != null ? `<p class="note">${esc(m.why)}</p>` : ""}
+  ${L.length ? `<ul class="steps">${L.map(x => `<li><b class="${x.good ? "buy" : "sell"}">${x.good ? "helps" : "hurts"}</b> ${esc(x.text)}</li>`).join("")}</ul>` : ""}
+  <p class="foot">Re-learned from your Log after every finished signal. It is advice only: it does not change the verdict. With few signals a pattern can be luck, so trust it only when it says "proven".</p>`;
+}
+
+/* ---------- Chloe researches the market herself, then checks whether she was right ---------- */
+let research = store.get("c2.research", null), rlog = store.get("c2.rlog", []), researching = false;
+const RPAIRS = ["XAUUSD", "BTCUSD", "NASDAQ", "USDCAD", "USDJPY", "AUDUSD"], RN = { XAUUSD: "Gold", BTCUSD: "Bitcoin", NASDAQ: "Nasdaq-100", USDCAD: "USD/CAD", USDJPY: "USD/JPY", AUDUSD: "AUD/USD" };
+function researchRecord() { let hit = 0, miss = 0; const by = {}; for (const r of rlog) for (const p in (r.scored || {})) { const s = r.scored[p]; if (s.res === "hit") hit++; else if (s.res === "miss") miss++; } return { hit, miss, n: hit + miss }; }
+function researchAdj(key) {   // only trusted once her own record on past calls is good enough
+  const r = researchRecord(); if (!research || !research.pairs[key] || Date.now() - research.at > 26 * 3600000 || r.n < 10 || r.hit / r.n < 0.55) return 0;
+  const l = research.pairs[key].lean; return l === "bullish" ? 0.15 : l === "bearish" ? -0.15 : 0;
+}
+async function perfPx() { try { const j = await api("/api/perf"); const o = {}; for (const k of RPAIRS) if (j.pairs && j.pairs[k] && j.pairs[k].px) o[k] = j.pairs[k].px; return o; } catch { return {}; } }
+async function runResearch(force) {
+  if (researching) return; if (!force && research && Date.now() - research.at < 12 * 3600000) return; researching = true; const msg = $("#resMsg"); if (msg) { msg.className = "status"; msg.textContent = "Chloe is researching the news… (up to a minute)"; }
+  try {
+    const px = await perfPx(), prev = rlog.at(-1);
+    if (prev && Date.now() - prev.at > 18 * 3600000 && !prev.scored) {   // check how the previous calls turned out
+      prev.scored = {}; for (const p in prev.pairs) { const a = prev.px[p], b = px[p]; if (!(a > 0 && b > 0) || prev.pairs[p] === "neutral") continue; const mv = (b / a - 1) * 100, thr = (RX_THR[p] || 0.1) * 1.5; prev.scored[p] = { mv: +mv.toFixed(2), res: Math.abs(mv) < thr ? "flat" : (mv > 0) === (prev.pairs[p] === "bullish") ? "hit" : "miss" }; }
+    }
+    const lessons = rlog.filter(r => r.scored).slice(-3).map(r => Object.entries(r.scored).filter(([, s]) => s.res !== "flat").map(([p, s]) => `${RN[p]}: said ${r.pairs[p]}, price moved ${s.mv > 0 ? "+" : ""}${s.mv}% (${s.res === "hit" ? "right" : "WRONG"})`).join("; ")).filter(Boolean).join(" | ");
+    const q = `Today is ${new Date().toUTCString()}. You are a market researcher for a trader. Search the web for the latest news, data, central bank talk and positioning that matter for these markets over the next 1 to 3 days: ${RPAIRS.map(k => RN[k]).join(", ")}. ${lessons ? "Your recent calls and how they turned out (learn from the wrong ones): " + lessons + ". " : ""}Reply with ONLY a JSON object, no other text, in this shape: {"XAUUSD":{"lean":"bullish|bearish|neutral","why":"one plain sentence naming the real driver","watch":"the next event or level to watch"}, "BTCUSD":{...}, "NASDAQ":{...}, "USDCAD":{...}, "USDJPY":{...}, "AUDUSD":{...}}. The lean is for the next 1 to 3 days. Use neutral when there is no clear driver.`;
+    const j = await api("/api/llm", { method: "POST", body: JSON.stringify({ messages: [{ role: "user", content: q }], search: true, maxTokens: 2400 }) });
+    const m = String(j.text || "").match(/\{[\s\S]*\}/); if (!m) throw new Error("Chloe could not read the research reply. Try again.");
+    const o = JSON.parse(m[0]), pairs = {}, rp = {};
+    for (const k of RPAIRS) { const x = o[k]; if (!x) continue; const lean = /bull/i.test(x.lean) ? "bullish" : /bear/i.test(x.lean) ? "bearish" : "neutral"; pairs[k] = { lean, why: String(x.why || "").slice(0, 300), watch: String(x.watch || "").slice(0, 200) }; rp[k] = lean; }
+    if (!Object.keys(pairs).length) throw new Error("The research reply had no pairs in it.");
+    research = { at: Date.now(), pairs, src: (j.sources || []).slice(0, 4) };
+    rlog.push({ at: Date.now(), pairs: rp, px }); rlog = rlog.slice(-30); store.set("c2.research", research); store.set("c2.rlog", rlog);
+    if (msg) msg.textContent = "";
+  } catch (e) { if (e.locked) showUnlock(); if (msg) { msg.className = "status err"; msg.textContent = e.message || "Research failed"; } }
+  finally { researching = false; renderResearch(); }
+}
+function renderResearch() {
+  const el = $("#researchCard"); if (!el) return; const r = research, x = r && r.pairs[pair], rec = researchRecord();
+  const age = r ? Math.max(0, Math.round((Date.now() - r.at) / 3600000)) : null;
+  el.innerHTML = `<div class="sec-head" style="margin-bottom:6px"><h2 class="h-sec">Chloe's research</h2>${x ? `<span class="chip ${x.lean === "bullish" ? "buy" : x.lean === "bearish" ? "sell" : "wait"}">${x.lean}</span>` : ""}</div>
+  ${x ? `<p class="note" style="font-size:14px">${esc(x.why)}</p>${x.watch ? `<p class="note">Watch: ${esc(x.watch)}</p>` : ""}<p class="foot">Researched ${age < 1 ? "less than an hour" : age + " hour" + (age === 1 ? "" : "s")} ago for the next 1 to 3 days. ${rec.n ? `Her record so far: ${rec.hit} right and ${rec.miss} wrong${rec.n >= 10 ? ` (${Math.round(rec.hit / rec.n * 100)}%)` : ""}. ${researchAdj(pair) !== 0 ? "Her record is good enough that this now nudges the Sentiment analyst." : "It only starts to nudge the Sentiment analyst once she has 10 scored calls and is right at least 55% of the time."}` : "She scores each call about a day later, by how the price actually moved, and next time she is shown the ones she got wrong."}</p>` : `<p class="note">No research yet.</p>`}
+  <div class="actions"><button class="btn" id="resGo" type="button" ${researching ? "disabled" : ""}>${r ? "Research again now" : "Research now"}</button></div><p class="status" id="resMsg" role="status"></p>`;
+  $("#resGo").onclick = () => runResearch(true);
+}
+
 /* ---------- the six analysts ---------- */
 function analyze(key) {
   const cfg = PAIRS[key], R = raw[key]; if (!R) return null;
@@ -636,8 +718,9 @@ function analyze(key) {
   const trD = trs(d1), ratioD = mean(trD.slice(-5)) / mean(trD.slice(-25)), trH = trs(h1), ratioH = mean(trH.slice(-14)) / mean(trH);
   const vol = ratioH > 1.3 ? "HIGH" : ratioH < 0.8 ? "LOW" : "NORMAL";
   const flow = flowScan(R), fs = flow ? flow.score : 0, lmap = liqMapOf(key, d1, h1, price, atrD);
-  const net = 0.3 * tech + 0.15 * liq + 0.2 * macro + 0.15 * sent + 0.2 * fs;
-  const votes = [voteOf(tech), voteOf(liq), voteOf(macro), voteOf(sent), voteOf(fs)];
+  const rAdj = researchAdj(key), sentX = clamp(sent + rAdj);
+  const net = 0.3 * tech + 0.15 * liq + 0.2 * macro + 0.15 * sentX + 0.2 * fs;
+  const votes = [voteOf(tech), voteOf(liq), voteOf(macro), voteOf(sentX), voteOf(fs)];
   const nn = newsNear(key); let verdict = net > 0.12 ? "BUY" : net < -0.12 ? "SELL" : "WAIT"; const blocked = nn && nn.block && verdict !== "WAIT"; if (blocked) verdict = "WAIT";
   const agree = verdict === "WAIT" ? 0 : votes.filter(v => v === verdict).length;
   let rp = 0; const rn = [];
@@ -661,7 +744,7 @@ function analyze(key) {
   }
   const ctx = { tf: { d1: tf.d1, h4: tf.h4, h1: tf.h1, m15: tf.m15 }, fs, level, vol, news: !!(evToday || nn), rsi: r14, hr: new Date().getUTCHours(), votes: { macro: votes[2], tech: votes[0], liq: votes[1], sent: votes[3], flow: votes[4] } };
   return { key, price, ctx, lastT: m15.at(-1).t, flow, lmap, tf, net, verdict, conv, agree, move, vol, level, mult,
-    council: { macro: { s: macro, text: macroText, src: macroSrc }, tech: { s: tech, text: techText, src: "Twelve Data candles" }, liq: { s: liq, text: liqText, src: "Twelve Data candles" }, sent: { s: sent, text: sentText, src: sentSrc }, flow: { s: fs, text: flow ? flow.text : "No candle data for order flow.", src: "Candle closes on 5 min to daily" } },
+    council: { macro: { s: macro, text: macroText, src: macroSrc }, tech: { s: tech, text: techText, src: "Twelve Data candles" }, liq: { s: liq, text: liqText, src: "Twelve Data candles" }, sent: { s: sentX, text: sentText + (rAdj ? ` Chloe's own research leans ${rAdj > 0 ? "bullish" : "bearish"} (${research.pairs[key].why})` : ""), src: sentSrc + (rAdj ? ", Chloe's research" : "") }, flow: { s: fs, text: flow ? flow.text : "No candle data for order flow.", src: "Candle closes on 5 min to daily" } },
     riskText, drv: DV, blocked: blocked ? nn : null, pdh, pdl, hi5, lo5, plan, atrD, h1: h1.slice(-72), ev: evToday,
     bars: { m15: m15.slice(-140), h1: h1.slice(-140), h4: h4.slice(-140), d1: d1.slice(-100) },
     pools: cand, sweep: sweptLow ? { n: sweptLow.n, up: true } : sweptHigh ? { n: sweptHigh.n, up: false } : null, nearUp: above || null, nearDn: below || null };
@@ -829,13 +912,15 @@ function renderSignal() {
   ${A.blocked ? `<section class="card" style="border-color:var(--warn)"><p class="note" style="color:var(--warn)"><b>Stand aside.</b> ${esc(A.blocked.cur)} ${esc(A.blocked.title)} ${A.blocked.mins >= 0 ? "lands in " + A.blocked.mins + " minutes" : "came out " + (-A.blocked.mins) + " minutes ago"}. The analysts would have said ${A.net > 0 ? "BUY" : "SELL"}, but price is too jumpy around big news, so this shows WAIT. Run again about 20 minutes after the release.</p></section>` : ""}
   ${A.drv ? driversCard(A) : ""}
   <section class="card" id="chartCard" aria-label="Chart"></section>
+  <section class="card" id="brainCard" aria-label="What Chloe has learned"></section>
+  <section class="card" id="researchCard" aria-label="Chloe research"></section>
   <section class="card" id="flowCard" aria-label="Buyers vs sellers"></section>
   <section class="card" id="lmapCard" aria-label="Liquidity map"></section>
   <section class="card" id="edgeCard" aria-label="Upcoming news lean"></section>
   <section class="card" id="sniperCard" aria-label="Sniper setup"></section>
   <section class="card" id="planCard" aria-label="Trade plan"></section>
   <p class="foot">Rule-based signals from price data. Conviction is a strength score, not a win rate, until your log proves otherwise. Not financial advice.</p>`;
-  renderPlan(); renderHitLine(); chartSel = null; renderChart(); renderSniper(); renderFlow(); renderLmap(); renderEdge(); loadEdge();
+  renderPlan(); renderHitLine(); chartSel = null; renderChart(); renderSniper(); renderFlow(); renderLmap(); renderEdge(); loadEdge(); renderBrain(); renderResearch(); runResearch(false);
 }
 function driversCard(A) {
   const D = A.drv, bank = A.key === "GBPUSD" ? "Bank of England" : "Bank of Japan", bar = v => `<span class="${v > 0.15 ? "buy" : v < -0.15 ? "sell" : ""}">${v > 0.15 ? "pushes up" : v < -0.15 ? "pushes down" : "neutral"}</span>`;
