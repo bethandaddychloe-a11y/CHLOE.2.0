@@ -116,7 +116,7 @@ function cot(pair) {
 
 /* ---------- options put/call ratio: Alpha Vantage (optional) ---------- */
 const OPT_SYMBOLS = new Set(["GLD", "QQQ", "IBIT", "UUP"]);
-const SECRETS = ["TWELVE_KEY", "FRED_KEY", "FINNHUB_KEY", "AV_KEY", "LLM_KEY", "UPSTASH_URL", "UPSTASH_TOKEN", "METAAPI_TOKEN", "ACCESS_KEY", "EA_KEY"];
+const SECRETS = ["TWELVE_KEY", "FRED_KEY", "FINNHUB_KEY", "AV_KEY", "LLM_KEY", "UPSTASH_URL", "UPSTASH_TOKEN", "METAAPI_TOKEN", "ACCESS_KEY", "EA_KEY", "TV_KEY"];
 function scrub(msg) {
   let t = String(msg || "");
   for (const k of SECRETS) { const v = E[k]; if (v && v.length >= 6) t = t.split(v).join("***"); }
@@ -490,6 +490,32 @@ async function eaRoute(req, res, p) {
 }
 
 
+/* ---------- TradingView alerts: the indicator sends each setup here, the app adds it to the Log ---------- */
+const tvMem = { list: [], loaded: false };
+async function tvLoad() { if (tvMem.loaded) return; tvMem.loaded = true; if (E.UPSTASH_URL && E.UPSTASH_TOKEN) { try { const r = await upstash(["GET", "chloe2:tv"]); const a = r ? JSON.parse(r) : []; if (Array.isArray(a)) tvMem.list = a; } catch {} } }
+const TV_MAP = { XAUUSD: "XAUUSD", GOLD: "XAUUSD", XAUUSDM: "XAUUSD", BTCUSD: "BTCUSD", BTCUSDT: "BTCUSD", XBTUSD: "BTCUSD", NAS100: "NASDAQ", US100: "NASDAQ", USTEC: "NASDAQ", NDX: "NASDAQ", NQ1: "NASDAQ", NQ: "NASDAQ", NASDAQ: "NASDAQ", USDCAD: "USDCAD", USDJPY: "USDJPY", AUDUSD: "AUDUSD" };
+async function tvRoute(req, res) {
+  let raw = ""; try { raw = await new Promise((ok, no) => { const ch = []; let n = 0; req.on("data", c => { n += c.length; if (n > 20000) { no(new Error("big")); req.destroy(); } else ch.push(c); }); req.on("end", () => ok(Buffer.concat(ch).toString("utf8"))); req.on("error", no); }); } catch {}
+  let b = null; try { b = JSON.parse(raw); } catch {}
+  const q = new URL(req.url, "http://x").searchParams.get("key");
+  if (!E.TV_KEY || !same((b && b.key) || q || "", E.TV_KEY)) return send(res, 403, "DENIED", "text/plain");
+  if (!b || typeof b !== "object") return send(res, 400, "Alert message must be JSON", "text/plain");
+  await tvLoad();
+  const base = String(b.pair || b.ticker || "").toUpperCase().replace(/^.*:/, "").replace(/[^A-Z0-9]/g, ""), pair = TV_MAP[base] || TV_MAP[base.replace(/(M|PRO|RAW)$/, "")];
+  const dir = String(b.dir || b.side || "").toUpperCase(), entry = +b.entry, sl = +b.sl, tp = +b.tp;
+  if (!pair) return send(res, 400, "Unknown pair " + base, "text/plain");
+  if (dir !== "BUY" && dir !== "SELL") return send(res, 400, "dir must be BUY or SELL", "text/plain");
+  if (!(entry > 0 && sl > 0 && tp > 0)) return send(res, 400, "entry, sl and tp must be numbers", "text/plain");
+  if ((dir === "BUY" && !(sl < entry && tp > entry)) || (dir === "SELL" && !(sl > entry && tp < entry))) return send(res, 400, "stop and target are on the wrong side of the entry", "text/plain");
+  const id = "tv" + pair + dir + Math.round(entry * 1000) + "_" + (+b.t || Math.floor(Date.now() / 600000));
+  if (tvMem.list.some(x => x.id === id)) return send(res, 200, "DUPLICATE", "text/plain");
+  const rr = Math.abs(tp - entry) / Math.abs(entry - sl), score = Math.max(0, Math.min(8, Math.round(+b.score || 0)));
+  tvMem.list.unshift({ id, ts: Date.now(), pair, dir, entry, sl, tp, rr: +rr.toFixed(2), score, tf: String(b.tf || "").slice(0, 8), note: String(b.note || "").slice(0, 120) });
+  tvMem.list = tvMem.list.slice(0, 100);
+  if (E.UPSTASH_URL && E.UPSTASH_TOKEN) upstash(["SET", "chloe2:tv", JSON.stringify(tvMem.list)]).catch(() => {});
+  return send(res, 200, "OK", "text/plain");
+}
+
 /* ---------- relative strength: which pair and which currency is outperforming ---------- */
 const PERF = { XAUUSD: "XAU/USD", BTCUSD: "BTC/USD", NASDAQ: "QQQ", USDCAD: "USD/CAD", USDJPY: "USD/JPY", AUDUSD: "AUD/USD" };
 const perf = { at: 0, data: {}, running: false, err: "" };
@@ -503,7 +529,7 @@ function perfMetrics(cl) {
   let vs = 0; for (let i = n - 14; i < n; i++) vs += Math.abs(pc(cl[i], cl[i - 1])); const vol = vs / 14;
   const trend = last > e20 && (e50 === null || e20 > e50) ? "up" : last < e20 && (e50 === null || e20 < e50) ? "down" : "mixed";
   const r5 = pc(last, cl[n - 6]);
-  return { last, ret1: pc(last, cl[n - 2]), ret5: r5, ret20: pc(last, cl[n - 21]), rsi: Math.round(rsi), trend, e20, e50, vol, z5: vol > 0 ? r5 / (vol * Math.sqrt(5)) : 0 };
+  return { px: last, last, ret1: pc(last, cl[n - 2]), ret5: r5, ret20: pc(last, cl[n - 21]), rsi: Math.round(rsi), trend, e20, e50, vol, z5: vol > 0 ? r5 / (vol * Math.sqrt(5)) : 0 };
 }
 async function perfRun() {
   if (perf.running) return; perf.running = true; perf.err = "";
@@ -644,6 +670,7 @@ async function api(req, res, u) {
     }
     return send(res, 200, { rows: rows.slice(-size), source: "broker" });
   }
+  if (p === "/api/tv") { await tvLoad(); return send(res, 200, { configured: !!E.TV_KEY, signals: tvMem.list }); }
   if (p === "/api/ndx") return send(res, 200, await ndxQuote());
   if (p === "/api/newsedge") return send(res, 200, await newsEdge());
   if (p === "/api/perf") {
@@ -699,6 +726,7 @@ http.createServer(async (req, res) => {
   const u = new URL(req.url, "http://localhost");
   try {
     if (u.pathname === "/health") return send(res, 200, "ok", "text/plain");
+    if (u.pathname === "/tv/hook" && req.method === "POST") return await tvRoute(req, res);
     if ((u.pathname === "/ea/poll" || u.pathname === "/ea/candles") && req.method === "POST") return await eaRoute(req, res, u.pathname);
     if (u.pathname.startsWith("/api/")) return await api(req, res, u);
     return serveStatic(res, u.pathname);
